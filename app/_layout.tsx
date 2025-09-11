@@ -8,7 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider, useOnboarding } from "@/contexts/OnboardingContext";
 import { MatchContext } from "@/contexts/MatchContext";
 import OnboardingScreen from "./onboarding";
-import { View, ActivityIndicator, Platform } from "react-native";
+import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import colors from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
@@ -21,14 +21,18 @@ function RootLayoutNav() {
   // Always set up SystemUI - must be called before any conditional returns
   useEffect(() => {
     if (Platform.OS !== 'web') {
-      SystemUI.setBackgroundColorAsync('#ffffff');
+      try {
+        SystemUI.setBackgroundColorAsync('#ffffff');
+      } catch (error) {
+        console.log('SystemUI not available:', error);
+      }
     }
   }, []);
 
   // Conditional rendering after all hooks are called
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.cosmic.purple} />
       </View>
     );
@@ -59,7 +63,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <OnboardingProvider>
           <MatchContext>
-            <GestureHandlerRootView style={{ flex: 1 }}>
+            <GestureHandlerRootView style={styles.gestureContainer}>
               <RootLayoutNav />
             </GestureHandlerRootView>
           </MatchContext>
@@ -68,3 +72,15 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  gestureContainer: {
+    flex: 1,
+  },
+});

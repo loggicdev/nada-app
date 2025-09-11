@@ -122,8 +122,13 @@ export default function ChatScreen() {
   const otherUser = mockUsers.find(u => u.id === otherUserId);
 
   useEffect(() => {
+    // Configure SystemUI safely
     if (Platform.OS !== 'web') {
-      SystemUI.setBackgroundColorAsync('#ffffff');
+      try {
+        SystemUI.setBackgroundColorAsync('#ffffff');
+      } catch (error) {
+        console.log('SystemUI not available:', error);
+      }
     }
   }, []);
 

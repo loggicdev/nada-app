@@ -15,7 +15,11 @@ export default function JourneyScreen() {
   
   useEffect(() => {
     if (Platform.OS !== 'web') {
-      SystemUI.setBackgroundColorAsync('#ffffff');
+      try {
+        SystemUI.setBackgroundColorAsync('#ffffff');
+      } catch (error) {
+        console.log('SystemUI not available:', error);
+      }
     }
   }, []);
 

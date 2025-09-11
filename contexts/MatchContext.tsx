@@ -24,15 +24,15 @@ interface MatchContextType {
   getNextCandidate: () => void;
 }
 
+// Create initial candidates outside the hook to avoid recreation
+const createInitialCandidates = (): MatchCandidate[] => mockUsers.map(user => ({
+  ...user,
+  distance: Math.round((Math.random() * 5 + 0.5) * 10) / 10, // Random distance 0.5-5.5km
+  compatibilityScore: Math.floor(Math.random() * 15) + 85 // Random score 85-99%
+}));
+
 export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() => {
-  // Convert all users to match candidates for testing
-  const allCandidates: MatchCandidate[] = mockUsers.map(user => ({
-    ...user,
-    distance: Math.round((Math.random() * 5 + 0.5) * 10) / 10, // Random distance 0.5-5.5km
-    compatibilityScore: Math.floor(Math.random() * 15) + 85 // Random score 85-99%
-  }));
-  
-  const [candidates, setCandidates] = useState<MatchCandidate[]>(allCandidates);
+  const [candidates, setCandidates] = useState<MatchCandidate[]>(createInitialCandidates);
   const [matches, setMatches] = useState<Match[]>(mockMatches);
   const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
   const [messages, setMessages] = useState<{ [conversationId: string]: Message[] }>({
@@ -96,9 +96,9 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
     if (availableCandidates.length === 0) {
       // In a real app, you'd fetch more candidates
       // For demo, we'll reset to show candidates again
-      setCandidates(allCandidates); // Reset candidates
+      setCandidates(createInitialCandidates()); // Reset candidates
     }
-  }, [candidates, allCandidates]);
+  }, [candidates]);
 
   const sendMessage = useCallback((conversationId: string, content: string, type: 'text' | 'image' = 'text') => {
     const newMessage: Message = {
