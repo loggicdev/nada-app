@@ -382,6 +382,8 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   messagesContainer: {
     flex: 1,
