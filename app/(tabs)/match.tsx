@@ -46,8 +46,8 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => {
-      // Only respond to vertical swipes (YouTube Shorts style)
-      return isTop && Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+      // Respond to horizontal swipes (Tinder style)
+      return isTop && Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
     },
     onPanResponderGrant: () => {
       pan.stopAnimation();
@@ -56,35 +56,57 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
     onPanResponderMove: (_, gestureState) => {
       if (!isTop) return;
       
-      // Only allow upward movement for skipping
-      if (gestureState.dy < 0) {
-        pan.setValue({ x: 0, y: gestureState.dy });
-      }
+      // Allow horizontal movement
+      pan.setValue({ x: gestureState.dx, y: 0 });
+      
+      // Add rotation based on horizontal movement
+      const rotationValue = gestureState.dx / screenWidth * 30;
+      rotate.setValue(rotationValue);
     },
     onPanResponderRelease: (_, gestureState) => {
       if (!isTop) return;
       
-      const swipeUpThreshold = -100; // Swipe up threshold
-      const velocityThreshold = -0.5; // Upward velocity threshold
+      const swipeThreshold = screenWidth * 0.25; // 25% of screen width
+      const velocityThreshold = 0.5; // Horizontal velocity threshold
       
-      const shouldSkip = gestureState.dy < swipeUpThreshold || gestureState.vy < velocityThreshold;
+      const shouldSwipeRight = gestureState.dx > swipeThreshold || gestureState.vx > velocityThreshold;
+      const shouldSwipeLeft = gestureState.dx < -swipeThreshold || gestureState.vx < -velocityThreshold;
       
-      if (shouldSkip) {
-        // Animate card sliding up and out
+      if (shouldSwipeRight) {
+        // Animate card sliding right (like)
         Animated.timing(pan, {
-          toValue: { x: 0, y: -screenHeight },
+          toValue: { x: screenWidth, y: 0 },
           duration: 300,
           useNativeDriver: false,
         }).start(() => {
           // Reset values immediately after animation
           pan.setValue({ x: 0, y: 0 });
           rotate.setValue(0);
-          onSwipeLeft(); // Skip/pass the user
+          onSwipeRight(); // Like the user
+        });
+      } else if (shouldSwipeLeft) {
+        // Animate card sliding left (dislike)
+        Animated.timing(pan, {
+          toValue: { x: -screenWidth, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        }).start(() => {
+          // Reset values immediately after animation
+          pan.setValue({ x: 0, y: 0 });
+          rotate.setValue(0);
+          onSwipeLeft(); // Dislike/pass the user
         });
       } else {
         // Spring back to center
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
+          useNativeDriver: false,
+          tension: 100,
+          friction: 8,
+        }).start();
+        
+        Animated.spring(rotate, {
+          toValue: 0,
           useNativeDriver: false,
           tension: 100,
           friction: 8,
