@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, Slot } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import React, { useEffect } from "react";
@@ -7,7 +7,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { MatchContext } from "@/contexts/MatchContext";
-import { Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -23,6 +24,15 @@ function RootLayoutNav() {
       }
     }
   }, []);
+
+  // Try to use Slot as fallback for navigation issues
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.webContainer}>
+        <Slot />
+      </View>
+    );
+  }
 
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
@@ -41,22 +51,27 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={styles.gestureContainer}>
-        <QueryClientProvider client={queryClient}>
-          <OnboardingProvider>
-            <MatchContext>
-              <RootLayoutNav />
-            </MatchContext>
-          </OnboardingProvider>
-        </QueryClientProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={styles.gestureContainer}>
+          <QueryClientProvider client={queryClient}>
+            <OnboardingProvider>
+              <MatchContext>
+                <RootLayoutNav />
+              </MatchContext>
+            </OnboardingProvider>
+          </QueryClientProvider>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
   gestureContainer: {
+    flex: 1,
+  },
+  webContainer: {
     flex: 1,
   },
 });
