@@ -1,13 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import * as SystemUI from "expo-system-ui";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { MatchContext } from "@/contexts/MatchContext";
-import { Platform, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
@@ -15,23 +14,13 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      try {
-        SystemUI.setBackgroundColorAsync('#ffffff');
-      } catch (error) {
-        console.log('SystemUI not available:', error);
-      }
-    }
-  }, []);
-
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="chat/[id]" />
+      <Stack.Screen name="profile/[id]" />
+      <Stack.Screen name="+not-found" />
     </Stack>
   );
 }

@@ -45,6 +45,7 @@ export default function TabLayout() {
           fontSize: 11,
           fontWeight: '500',
           marginTop: 2,
+          textAlign: 'center',
         },
       }}
     >
