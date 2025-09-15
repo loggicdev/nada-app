@@ -26,15 +26,13 @@ function RootLayoutNav() {
   }, []);
 
   return (
-    <ErrorBoundary>
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-        <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="profile/[id]" options={{ title: "Perfil", headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-      </Stack>
-    </ErrorBoundary>
+    <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="profile/[id]" options={{ title: "Perfil", headerShown: false }} />
+      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+    </Stack>
   );
 }
 
@@ -44,19 +42,19 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ErrorBoundary>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={styles.gestureContainer}>
-          <QueryClientProvider client={queryClient}>
-            <OnboardingProvider>
-              <MatchContext>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.gestureContainer}>
+        <QueryClientProvider client={queryClient}>
+          <OnboardingProvider>
+            <MatchContext>
+              <ErrorBoundary>
                 <RootLayoutNav />
-              </MatchContext>
-            </OnboardingProvider>
-          </QueryClientProvider>
-        </GestureHandlerRootView>
-      </SafeAreaProvider>
-    </ErrorBoundary>
+              </ErrorBoundary>
+            </MatchContext>
+          </OnboardingProvider>
+        </QueryClientProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 
