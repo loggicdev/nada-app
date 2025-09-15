@@ -26,25 +26,29 @@ function RootLayoutNav() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
+    <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="profile/[id]" options={{ title: "Perfil", headerShown: false }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+      <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
   useEffect(() => {
-    SplashScreen.hideAsync();
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <ErrorBoundary>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={styles.gestureContainer}>
+      <GestureHandlerRootView style={styles.gestureContainer}>
+        <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
             <OnboardingProvider>
               <MatchContext>
@@ -52,8 +56,8 @@ export default function RootLayout() {
               </MatchContext>
             </OnboardingProvider>
           </QueryClientProvider>
-        </GestureHandlerRootView>
-      </SafeAreaProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     </ErrorBoundary>
   );
 }
