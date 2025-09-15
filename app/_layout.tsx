@@ -8,7 +8,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { MatchContext } from "@/contexts/MatchContext";
 import { Platform, StyleSheet } from "react-native";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,9 +46,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <OnboardingProvider>
             <MatchContext>
-              <ErrorBoundary>
-                <RootLayoutNav />
-              </ErrorBoundary>
+              <RootLayoutNav />
             </MatchContext>
           </OnboardingProvider>
         </QueryClientProvider>
