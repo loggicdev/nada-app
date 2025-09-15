@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { MatchContext } from "@/contexts/MatchContext";
 import { Platform, StyleSheet } from "react-native";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -25,13 +26,15 @@ function RootLayoutNav() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="profile/[id]" options={{ title: "Perfil", headerShown: false }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-    </Stack>
+    <ErrorBoundary>
+      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/[id]" options={{ title: "Perfil", headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+      </Stack>
+    </ErrorBoundary>
   );
 }
 
@@ -41,17 +44,19 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <OnboardingProvider>
-          <MatchContext>
-            <GestureHandlerRootView style={styles.gestureContainer}>
-              <RootLayoutNav />
-            </GestureHandlerRootView>
-          </MatchContext>
-        </OnboardingProvider>
-      </QueryClientProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={styles.gestureContainer}>
+          <QueryClientProvider client={queryClient}>
+            <OnboardingProvider>
+              <MatchContext>
+                <RootLayoutNav />
+              </MatchContext>
+            </OnboardingProvider>
+          </QueryClientProvider>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
