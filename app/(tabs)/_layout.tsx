@@ -1,12 +1,12 @@
-import { Tabs } from "expo-router";
+import { Tabs, Redirect } from "expo-router";
 import { Compass, MessageCircle, User, Sparkles, Heart } from "lucide-react-native";
 import React, { useEffect } from "react";
-import { Platform, StatusBar } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, StatusBar, View, ActivityIndicator, StyleSheet } from "react-native";
 import colors from "@/constants/colors";
+import { useOnboarding } from "@/contexts/OnboardingContext";
 
 export default function TabLayout() {
-  const insets = useSafeAreaInsets();
+  const { isCompleted, isLoading } = useOnboarding();
   
   useEffect(() => {
     // Configure status bar for darker appearance in main app
@@ -17,6 +17,18 @@ export default function TabLayout() {
       StatusBar.setBarStyle('dark-content', true);
     }
   }, []);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.cosmic.purple} />
+      </View>
+    );
+  }
+
+  if (!isCompleted) {
+    return <Redirect href="/onboarding" />;
+  }
   
   return (
     <Tabs
@@ -28,9 +40,6 @@ export default function TabLayout() {
           backgroundColor: 'white',
           borderTopWidth: 1,
           borderTopColor: colors.neutral[200],
-          paddingTop: 6,
-          paddingBottom: Math.max(insets.bottom, 6),
-          height: 65 + Math.max(insets.bottom, 6),
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -77,3 +86,12 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+});
