@@ -1,0 +1,136 @@
+-- ========================================
+-- NADA APP - ONBOARDING SYSTEM TABLES
+-- Execute this script in Supabase Dashboard > SQL Editor
+-- ========================================
+
+-- First, check what tables already exist
+SELECT 'Checking existing tables...' as status;
+
+SELECT table_name, table_schema
+FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_name IN ('profiles', 'user_interests', 'user_goals', 'astrological_profiles', 'lifestyle_preferences')
+ORDER BY table_name;
+
+-- ========================================
+-- CREATE TABLES
+-- ========================================
+
+-- Create profiles table
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INTEGER,
+  bio TEXT,
+  location TEXT,
+  gender TEXT CHECK (gender IN ('feminine', 'masculine', 'non-binary')),
+  looking_for TEXT CHECK (looking_for IN ('women', 'men', 'everyone')),
+  last_active TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create user_interests table
+CREATE TABLE IF NOT EXISTS user_interests (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  interest TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, interest)
+);
+
+-- Create user_goals table
+CREATE TABLE IF NOT EXISTS user_goals (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  goal TEXT CHECK (goal IN ('dating', 'serious', 'marriage', 'friendship')) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, goal)
+);
+
+-- Create astrological_profiles table
+CREATE TABLE IF NOT EXISTS astrological_profiles (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  zodiac_sign TEXT,
+  moon_sign TEXT,
+  rising_sign TEXT,
+  birth_date DATE,
+  birth_time TIME,
+  birth_place TEXT,
+  personality_type TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create lifestyle_preferences table
+CREATE TABLE IF NOT EXISTS lifestyle_preferences (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  alcohol TEXT CHECK (alcohol IN ('never', 'socially', 'regularly')),
+  smoking TEXT CHECK (smoking IN ('never', 'socially', 'regularly')),
+  exercise TEXT CHECK (exercise IN ('never', 'sometimes', 'regularly', 'daily')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ========================================
+-- ENABLE ROW LEVEL SECURITY
+-- ========================================
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_interests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE astrological_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lifestyle_preferences ENABLE ROW LEVEL SECURITY;
+
+-- ========================================
+-- CREATE RLS POLICIES
+-- ========================================
+
+-- Drop existing policies if they exist (to avoid conflicts)
+DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can manage own interests" ON user_interests;
+DROP POLICY IF EXISTS "Users can manage own goals" ON user_goals;
+DROP POLICY IF EXISTS "Users can manage own astrological profile" ON astrological_profiles;
+DROP POLICY IF EXISTS "Users can manage own lifestyle preferences" ON lifestyle_preferences;
+
+-- Create policies for profiles
+CREATE POLICY "Users can view all profiles" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Create policies for user_interests
+CREATE POLICY "Users can manage own interests" ON user_interests FOR ALL USING (auth.uid() = user_id);
+
+-- Create policies for user_goals
+CREATE POLICY "Users can manage own goals" ON user_goals FOR ALL USING (auth.uid() = user_id);
+
+-- Create policies for astrological_profiles
+CREATE POLICY "Users can manage own astrological profile" ON astrological_profiles FOR ALL USING (auth.uid() = user_id);
+
+-- Create policies for lifestyle_preferences
+CREATE POLICY "Users can manage own lifestyle preferences" ON lifestyle_preferences FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- VERIFICATION
+-- ========================================
+
+-- Verify all tables were created successfully
+SELECT 'Tables created successfully!' as status;
+
+SELECT
+  table_name,
+  'EXISTS' as status
+FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_name IN ('profiles', 'user_interests', 'user_goals', 'astrological_profiles', 'lifestyle_preferences')
+ORDER BY table_name;
+
+-- Test basic functionality
+SELECT 'Testing profiles table...' as test;
+SELECT COUNT(*) as profile_count FROM profiles;
+
+SELECT 'Setup complete!' as final_status;

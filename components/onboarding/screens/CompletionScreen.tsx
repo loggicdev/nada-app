@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { CheckCircle, Sparkles, Users, Target } from 'lucide-react-native';
+import { router } from 'expo-router';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import FixedBottomButton from '@/components/onboarding/FixedBottomButton';
 import colors from '@/constants/colors';
@@ -13,7 +14,8 @@ const PROCESSING_STEPS = [
 ];
 
 export default function CompletionScreen() {
-  const { completeOnboarding } = useOnboarding();
+  const { completeOnboarding, isLoading } = useOnboarding();
+  
   const [currentProcessingStep, setCurrentProcessingStep] = useState<number>(0);
   const [isProcessingComplete, setIsProcessingComplete] = useState<boolean>(false);
 
@@ -30,7 +32,18 @@ export default function CompletionScreen() {
   }, []);
 
   const handleFinish = async () => {
-    await completeOnboarding();
+    try {
+      // Completar onboarding no banco
+      await completeOnboarding();
+
+      console.log('✅ Onboarding completo!');
+
+      // Redirecionar para app principal
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('❌ Erro ao finalizar onboarding:', error);
+      Alert.alert('Erro', 'Não foi possível finalizar. Tente novamente.');
+    }
   };
 
   return (
@@ -43,6 +56,7 @@ export default function CompletionScreen() {
           title={isProcessingComplete ? 'Começar a explorar' : 'Processando...'}
           onPress={handleFinish}
           disabled={!isProcessingComplete}
+          loading={isLoading}
         />
       }
     >

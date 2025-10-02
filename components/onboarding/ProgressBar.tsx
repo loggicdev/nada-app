@@ -9,12 +9,16 @@ interface ProgressBarProps {
 }
 
 export default function ProgressBar({ progress, currentStep, totalSteps }: ProgressBarProps) {
+  // Não contar step 0 (WelcomeScreen) na contagem
+  const displayStep = currentStep === 0 ? 0 : currentStep;
+  const displayTotal = totalSteps - 1; // Remove WelcomeScreen do total
+
   return (
     <View style={styles.container}>
       <View style={styles.progressContainer}>
         <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
       </View>
-      <Text style={styles.stepText}>{currentStep + 1}/{totalSteps}</Text>
+      <Text style={styles.stepText}>{displayStep}/{displayTotal}</Text>
     </View>
   );
 }

@@ -78,13 +78,7 @@ export default function OnboardingLayout({
             </View>
           )}
           
-          {/* Header */}
-          {title && (
-            <View style={styles.header}>
-              <Text style={styles.title}>{title}</Text>
-              {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-            </View>
-          )}
+          {/* Header - Removido para economizar espaço */}
           
           {/* Content */}
           <View style={styles.content}>
@@ -117,7 +111,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 120,
   },
   backButtonContainer: {

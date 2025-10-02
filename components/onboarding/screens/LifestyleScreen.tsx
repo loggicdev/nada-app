@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Activity } from 'lucide-react-native';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import FixedBottomButton from '@/components/onboarding/FixedBottomButton';
@@ -26,22 +26,37 @@ const LIFESTYLE_OPTIONS = {
 };
 
 export default function LifestyleScreen() {
-  const { nextStep, previousStep, updateData, currentStep, totalSteps, progress, data } = useOnboarding();
-  const [lifestyle, setLifestyle] = useState(data.lifestyle || {});
+  const { saveOnboardingData, nextStep, previousStep, currentStep, totalSteps, progress, isLoading } = useOnboarding();
+
+  const [lifestyle, setLifestyle] = useState<any>({});
 
   const isValid = lifestyle.alcohol && lifestyle.smoking && lifestyle.exercise;
 
   const handleOptionSelect = (category: keyof typeof LIFESTYLE_OPTIONS, value: string) => {
-    setLifestyle(prev => ({
+    setLifestyle((prev: any) => ({
       ...prev,
       [category]: value
     }));
   };
 
-  const handleNext = () => {
-    if (isValid) {
-      updateData({ lifestyle });
-      nextStep();
+  const handleNext = async () => {
+    if (!isValid) return;
+
+    try {
+      // Salvar dados NO BANCO
+      await saveOnboardingData({
+        lifestyle: {
+          alcohol: lifestyle.alcohol as 'never' | 'socially' | 'regularly',
+          smoking: lifestyle.smoking as 'never' | 'socially' | 'regularly',
+          exercise: lifestyle.exercise as 'never' | 'sometimes' | 'regularly' | 'daily',
+        },
+      });
+
+      // Avançar para o próximo step
+      await nextStep();
+    } catch (error) {
+      console.error('❌ Erro ao salvar estilo de vida:', error);
+      Alert.alert('Erro', 'Não foi possível salvar suas preferências. Tente novamente.');
     }
   };
 
@@ -105,6 +120,7 @@ export default function LifestyleScreen() {
           title='Próximo'
           onPress={handleNext}
           disabled={!isValid}
+          loading={isLoading}
         />
       }
     >

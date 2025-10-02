@@ -13,6 +13,8 @@ import CompletionScreen from '@/components/onboarding/screens/CompletionScreen';
 export default function OnboardingScreen() {
   const { currentStep } = useOnboarding();
 
+  console.log('📱 OnboardingScreen renderizando com currentStep:', currentStep);
+
   const renderCurrentScreen = () => {
     switch (currentStep) {
       case 0:

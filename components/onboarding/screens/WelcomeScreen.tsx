@@ -6,18 +6,26 @@ import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import OnboardingButton from '@/components/onboarding/OnboardingButton';
 import colors from '@/constants/colors';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
 
 export default function WelcomeScreen() {
   const { nextStep, completeOnboarding } = useOnboarding();
+  const { user } = useAuthContext();
   const insets = useSafeAreaInsets();
 
-  const handleCreateAccount = () => {
-    nextStep();
+  const handleCreateAccount = async () => {
+    // Sempre continua o onboarding - a criação da conta acontece durante o processo
+    try {
+      await nextStep();
+    } catch (error) {
+      console.error('Error advancing step:', error);
+    }
   };
 
   const handleLogin = () => {
-    console.log('Login pressed');
+    // Vai para tela de login
+    router.push('/auth/login');
   };
 
   const handleGoogleLogin = () => {
@@ -34,13 +42,6 @@ export default function WelcomeScreen() {
   return (
     <OnboardingLayout showProgress={false}>
       <View style={styles.container}>
-        <TouchableOpacity 
-          style={styles.skipButton}
-          onPress={handleSkipOnboarding}
-        >
-          <Text style={styles.skipButtonText}>Pular</Text>
-        </TouchableOpacity>
-        
         <View style={styles.header}>
           <View style={styles.iconContainer}>
             <View style={styles.iconBackground}>
@@ -63,7 +64,7 @@ export default function WelcomeScreen() {
               onPress={handleCreateAccount}
               variant='primary'
             />
-            
+
             <OnboardingButton
               title='Entrar'
               onPress={handleLogin}
@@ -78,7 +79,7 @@ export default function WelcomeScreen() {
           </View>
 
           <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-            <Image 
+            <Image
               source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/7aghkoavm8xq9vvpqetf5' }}
               style={styles.googleIcon}
               resizeMode="contain"
@@ -198,20 +199,5 @@ const styles = StyleSheet.create({
   termsLink: {
     color: colors.cosmic.purple,
     fontWeight: '500',
-  },
-  skipButton: {
-    position: 'absolute',
-    top: 20,
-    right: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.neutral[100],
-    zIndex: 1,
-  },
-  skipButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.neutral[600],
   },
 });

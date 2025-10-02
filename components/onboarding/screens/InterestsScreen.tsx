@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Heart, Search, X } from 'lucide-react-native';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import FixedBottomButton from '@/components/onboarding/FixedBottomButton';
@@ -7,15 +7,16 @@ import colors from '@/constants/colors';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 
 const SUGGESTED_INTERESTS = [
-  'R&B', 'Camping', 'Yoga', 'Vegetarianismo', 'Meditação', 'Fotografia',
-  'Culinária', 'Viagem', 'Leitura', 'Cinema', 'Música', 'Arte',
-  'Dança', 'Esportes', 'Natureza', 'Tecnologia', 'Moda', 'Fitness',
-  'Astrologia', 'Psicologia', 'Filosofia', 'Sustentabilidade'
+  'Música', 'Cinema', 'Leitura', 'Esportes', 'Viagem', 'Fotografia',
+  'Culinária', 'Arte', 'Dança', 'Tecnologia', 'Natureza', 'Fitness',
+  'Yoga', 'Meditação', 'Astrologia', 'Psicologia', 'Filosofia', 'Moda',
+  'Camping', 'Vegetarianismo', 'R&B', 'Sustentabilidade'
 ];
 
 export default function InterestsScreen() {
-  const { nextStep, previousStep, updateData, currentStep, totalSteps, progress, data } = useOnboarding();
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(data.interests || []);
+  const { saveOnboardingData, nextStep, previousStep, currentStep, totalSteps, progress, isLoading } = useOnboarding();
+
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [searchText, setSearchText] = useState<string>('');
 
   const isValid = selectedInterests.length >= 3;
@@ -32,10 +33,20 @@ export default function InterestsScreen() {
     }
   };
 
-  const handleNext = () => {
-    if (isValid) {
-      updateData({ interests: selectedInterests });
-      nextStep();
+  const handleNext = async () => {
+    if (!isValid) return;
+
+    try {
+      // Salvar dados NO BANCO
+      await saveOnboardingData({
+        interests: selectedInterests,
+      });
+
+      // Avançar para o próximo step
+      await nextStep();
+    } catch (error) {
+      console.error('❌ Erro ao salvar interesses:', error);
+      Alert.alert('Erro', 'Não foi possível salvar seus interesses. Tente novamente.');
     }
   };
 
@@ -62,6 +73,7 @@ export default function InterestsScreen() {
             title='Próximo'
             onPress={handleNext}
             disabled={!isValid}
+            loading={isLoading}
           />
         </>
       }

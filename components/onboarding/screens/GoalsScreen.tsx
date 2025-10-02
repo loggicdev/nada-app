@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Target } from 'lucide-react-native';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import FixedBottomButton from '@/components/onboarding/FixedBottomButton';
@@ -14,23 +14,34 @@ const GOAL_OPTIONS = [
 ];
 
 export default function GoalsScreen() {
-  const { nextStep, previousStep, updateData, currentStep, totalSteps, progress, data } = useOnboarding();
-  const [selectedGoals, setSelectedGoals] = useState<string[]>(data.goals || []);
+  const { saveOnboardingData, nextStep, previousStep, currentStep, totalSteps, progress, isLoading } = useOnboarding();
+
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
 
   const isValid = selectedGoals.length > 0;
 
   const handleGoalToggle = (goalId: string) => {
-    setSelectedGoals(prev => 
-      prev.includes(goalId) 
+    setSelectedGoals(prev =>
+      prev.includes(goalId)
         ? prev.filter(id => id !== goalId)
         : [...prev, goalId]
     );
   };
 
-  const handleNext = () => {
-    if (isValid) {
-      updateData({ goals: selectedGoals as any });
-      nextStep();
+  const handleNext = async () => {
+    if (!isValid) return;
+
+    try {
+      // Salvar dados NO BANCO
+      await saveOnboardingData({
+        goals: selectedGoals as ('dating' | 'serious' | 'marriage' | 'friendship')[],
+      });
+
+      // Avançar para o próximo step
+      await nextStep();
+    } catch (error) {
+      console.error('❌ Erro ao salvar objetivos:', error);
+      Alert.alert('Erro', 'Não foi possível salvar seus objetivos. Tente novamente.');
     }
   };
 
@@ -48,6 +59,7 @@ export default function GoalsScreen() {
           title='Próximo'
           onPress={handleNext}
           disabled={!isValid}
+          loading={isLoading}
         />
       }
     >

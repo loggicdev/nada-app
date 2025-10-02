@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { User, Calendar } from 'lucide-react-native';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import FixedBottomButton from '@/components/onboarding/FixedBottomButton';
 import colors from '@/constants/colors';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const genderOptions = [
   { id: 'feminine', label: 'Feminino' },
@@ -19,23 +20,43 @@ const lookingForOptions = [
 ];
 
 export default function BasicInfoScreen() {
-  const { nextStep, previousStep, updateData, currentStep, totalSteps, progress, data } = useOnboarding();
-  const [name, setName] = useState<string>(data.name || '');
-  const [age, setAge] = useState<string>(data.age?.toString() || '');
-  const [gender, setGender] = useState<string>(data.gender || '');
-  const [lookingFor, setLookingFor] = useState<string>(data.lookingFor || '');
+  const { saveOnboardingData, nextStep, previousStep, currentStep, totalSteps, progress, isLoading } = useOnboarding();
+  const { profile } = useAuthContext();
+
+  const [name, setName] = useState<string>('');
+  const [age, setAge] = useState<string>('');
+  const [gender, setGender] = useState<string>('');
+  const [lookingFor, setLookingFor] = useState<string>('');
+
+  // Carregar dados do profile (se existirem)
+  useEffect(() => {
+    if (profile) {
+      if (profile.name) setName(profile.name);
+      if (profile.age) setAge(profile.age.toString());
+      if (profile.gender) setGender(profile.gender);
+      if (profile.looking_for) setLookingFor(profile.looking_for);
+    }
+  }, [profile]);
 
   const isValid = name.length > 0 && age.length > 0 && gender.length > 0 && lookingFor.length > 0;
 
-  const handleNext = () => {
-    if (isValid) {
-      updateData({ 
-        name, 
-        age: parseInt(age), 
-        gender: gender as any, 
-        lookingFor: lookingFor as any 
+  const handleNext = async () => {
+    if (!isValid) return;
+
+    try {
+      // Salvar dados NO BANCO
+      await saveOnboardingData({
+        name,
+        age: parseInt(age),
+        gender: gender as 'feminine' | 'masculine' | 'non-binary',
+        lookingFor: lookingFor as 'women' | 'men' | 'everyone',
       });
-      nextStep();
+
+      // Avançar para o próximo step (também salva no banco)
+      await nextStep();
+    } catch (error) {
+      console.error('❌ Erro ao salvar informações básicas:', error);
+      Alert.alert('Erro', 'Não foi possível salvar suas informações. Tente novamente.');
     }
   };
 
@@ -53,6 +74,7 @@ export default function BasicInfoScreen() {
           title='Próximo'
           onPress={handleNext}
           disabled={!isValid}
+          loading={isLoading}
         />
       }
     >
@@ -196,5 +218,4 @@ const styles = StyleSheet.create({
   selectedOptionText: {
     color: 'white',
   },
-
 });
