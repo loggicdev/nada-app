@@ -46,7 +46,7 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => {
-      // Respond to horizontal swipes (Tinder style)
+      // Respond to horizontal swipes (Tinder style) - right = like, left = pass
       return isTop && Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
     },
     onPanResponderGrant: () => {

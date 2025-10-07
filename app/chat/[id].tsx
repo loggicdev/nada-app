@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
   messagesContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 28,
+    paddingBottom: 40,
     flexGrow: 1,
   },
   emptyState: {
