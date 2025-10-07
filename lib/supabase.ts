@@ -16,17 +16,23 @@ const originalFetch = global.fetch;
 
 // Custom fetch com timeout para React Native
 const fetchWithTimeout: typeof fetch = (input, init?) => {
-  const timeout = 10000; // 10 segundos
+  const timeout = 30000; // 30 segundos (aumentado de 10s)
 
   const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-  console.log('🌐 fetchWithTimeout chamado para:', url);
+
+  // Apenas log em desenvolvimento
+  if (__DEV__) {
+    console.log('🌐 fetchWithTimeout chamado para:', url);
+  }
 
   return Promise.race([
     originalFetch(input, init),
     new Promise<Response>((_, reject) =>
       setTimeout(() => {
-        console.log('⏱️ TIMEOUT após 10s para:', url);
-        reject(new Error('Request timeout after 10s'));
+        if (__DEV__) {
+          console.log('⏱️ TIMEOUT após 30s para:', url);
+        }
+        reject(new Error('Request timeout after 30s'));
       }, timeout)
     ),
   ]);

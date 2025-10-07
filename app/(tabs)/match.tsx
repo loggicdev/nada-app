@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Dimensions, 
-  Image, 
-  TouchableOpacity, 
-  PanResponder, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  Image,
+  TouchableOpacity,
+  PanResponder,
   Animated,
   Alert,
   Platform
@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import colors from '@/constants/colors';
 import { useMatch } from '@/contexts/MatchContext';
 import { MatchCandidate } from '@/types/user';
+import Toast, { ToastType } from '@/components/common/Toast';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CARD_WIDTH = screenWidth - 40;
@@ -79,10 +80,9 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
           duration: 300,
           useNativeDriver: false,
         }).start(() => {
-          // Reset values immediately after animation
-          pan.setValue({ x: 0, y: 0 });
-          rotate.setValue(0);
-          onSwipeRight(); // Like the user
+          // Chamar callback ANTES de resetar (para trocar card primeiro)
+          onSwipeRight();
+          // Reset será feito pelo useEffect quando cardKey mudar
         });
       } else if (shouldSwipeLeft) {
         // Animate card sliding left (dislike)
@@ -91,10 +91,9 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
           duration: 300,
           useNativeDriver: false,
         }).start(() => {
-          // Reset values immediately after animation
-          pan.setValue({ x: 0, y: 0 });
-          rotate.setValue(0);
-          onSwipeLeft(); // Dislike/pass the user
+          // Chamar callback ANTES de resetar (para trocar card primeiro)
+          onSwipeLeft();
+          // Reset será feito pelo useEffect quando cardKey mudar
         });
       } else {
         // Spring back to center
@@ -216,10 +215,22 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
 
 export default function MatchScreen() {
   const insets = useSafeAreaInsets();
-  const { currentCandidate, getNextCandidate, likeUser, dislikeUser } = useMatch();
+  const { currentCandidate, getNextCandidate, likeUser, dislikeUser, isLoading: contextLoading } = useMatch();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [cardKey, setCardKey] = useState<string>('0');
-  
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+
+  // Toast states
+  const [toastVisible, setToastVisible] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
+
   useEffect(() => {
     if (Platform.OS !== 'web') {
       SystemUI.setBackgroundColorAsync('#ffffff');
@@ -227,42 +238,73 @@ export default function MatchScreen() {
   }, []);
 
 
-  const handleSwipeLeft = () => {
-    if (currentCandidate && !isLoading) {
-      dislikeUser(currentCandidate.id);
-      setCardKey(prev => String(Number(prev) + 1));
-      getNextCandidate();
+  const handleSwipeLeft = async () => {
+    if (currentCandidate && !isLoading && !isProcessing) {
+      setIsProcessing(true);
+      const candidateName = currentCandidate.name;
+      const candidateId = currentCandidate.id;
+
+      try {
+        // Trocar card (a animação já foi feita pelo SwipeCard)
+        setCardKey(prev => String(Number(prev) + 1));
+
+        // Salvar rejeição em background
+        await dislikeUser(candidateId);
+        showToast(`Você dispensou ${candidateName}`, 'info');
+      } finally {
+        // Pequeno delay para evitar múltiplos cliques
+        setTimeout(() => setIsProcessing(false), 500);
+      }
     }
   };
 
   const handleCardPress = () => {
-    if (currentCandidate) {
+    if (currentCandidate && !isProcessing) {
       router.push(`/profile/${currentCandidate.id}`);
     }
   };
 
   const handleSwipeRight = async () => {
-    if (currentCandidate && !isLoading) {
+    if (currentCandidate && !isLoading && !isProcessing) {
       setIsLoading(true);
+      setIsProcessing(true);
+      const candidateName = currentCandidate.name;
+      const candidateId = currentCandidate.id;
+
       try {
-        const result = await likeUser(currentCandidate.id);
-        
-        if (result.isMatch) {
-          Alert.alert(
-            '🎉 É um Match!',
-            `Você e ${result.user.name} se curtiram! Que tal começar uma conversa?`,
-            [
-              { text: 'Continuar', onPress: () => {} }
-            ]
-          );
-        }
-        
+        // Trocar card (a animação já foi feita pelo SwipeCard)
         setCardKey(prev => String(Number(prev) + 1));
-        getNextCandidate();
+
+        // Fazer like em background
+        const result = await likeUser(candidateId);
+
+        if (result.isMatch) {
+          // Mostrar toast de match
+          showToast(`🎉 Match com ${candidateName}!`, 'success');
+
+          // Mostrar alert sem delay (não bloqueia a UI)
+          setTimeout(() => {
+            Alert.alert(
+              '💫 É um Match!',
+              `Você e ${candidateName} se curtiram! Que tal começar uma conversa?`,
+              [
+                { text: 'Ver depois', style: 'cancel' },
+                { text: 'Conversar', onPress: () => {
+                  // TODO: Navegar para conversa
+                }}
+              ]
+            );
+          }, 300);
+        } else {
+          showToast(`💜 Você curtiu ${candidateName}`, 'success');
+        }
       } catch (error) {
         console.error('Error liking user:', error);
+        showToast('Erro ao curtir perfil', 'error');
       } finally {
         setIsLoading(false);
+        // Pequeno delay para evitar múltiplos cliques
+        setTimeout(() => setIsProcessing(false), 500);
       }
     }
   };
@@ -285,6 +327,15 @@ export default function MatchScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Toast */}
+      <Toast
+        visible={toastVisible}
+        message={toastMessage}
+        type={toastType}
+        onHide={() => setToastVisible(false)}
+        duration={2500}
+      />
+
       {/* Cards Container */}
       <View style={[styles.cardsContainer, { paddingTop: insets.top + 20 }]}>
         <SwipeCard
@@ -300,18 +351,20 @@ export default function MatchScreen() {
 
       {/* Action Buttons */}
       <View style={[styles.actionButtonsContainer, { paddingBottom: Math.max(insets.bottom, 20) - 10 }]}>
-        <TouchableOpacity 
-          style={styles.rejectButton}
+        <TouchableOpacity
+          style={[styles.rejectButton, isProcessing && styles.buttonDisabled]}
           onPress={handleSwipeLeft}
           activeOpacity={0.8}
+          disabled={isProcessing}
         >
           <X size={28} color={colors.semantic.error} />
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.likeButton}
+
+        <TouchableOpacity
+          style={[styles.likeButton, isProcessing && styles.buttonDisabled]}
           onPress={handleSwipeRight}
           activeOpacity={0.8}
+          disabled={isProcessing}
         >
           <Heart size={28} color={colors.semantic.success} fill={colors.semantic.success} />
         </TouchableOpacity>
@@ -523,6 +576,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 
   emptyState: {

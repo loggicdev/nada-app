@@ -62,8 +62,6 @@ export interface Conversation {
 
 export interface MatchCandidate extends User {
   distance?: number;
-  isLiked?: boolean;
-  isDisliked?: boolean;
 }
 
 export interface MatchResult {

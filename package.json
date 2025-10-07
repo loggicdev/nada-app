@@ -50,8 +50,12 @@
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.0.10",
+    "axios": "^1.12.2",
+    "cheerio": "^1.1.2",
+    "dotenv": "^17.2.3",
     "eslint": "^9.31.0",
     "eslint-config-expo": "^9.2.0",
+    "fs-extra": "^11.3.2",
     "typescript": "~5.8.3"
   },
   "private": true
