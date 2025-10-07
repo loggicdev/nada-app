@@ -8,12 +8,26 @@ import colors from '@/constants/colors';
 import { useAuthContext } from '@/contexts/AuthContext';
 import AvatarUploader from '@/components/profile/AvatarUploader';
 import PhotoGrid from '@/components/profile/PhotoGrid';
+import EditProfileBottomSheet from '@/components/profile/EditProfileBottomSheet';
+import { supabase } from '@/lib/supabase';
+
+interface UserStats {
+  matchesCount: number;
+  conversationsCount: number;
+  averageCompatibility: number | null;
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { signOut, user, profile } = useAuthContext();
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
+  const [showEditProfileSheet, setShowEditProfileSheet] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
+  const [stats, setStats] = useState<UserStats>({
+    matchesCount: 0,
+    conversationsCount: 0,
+    averageCompatibility: null,
+  });
 
   // Animated values para o background e bottom sheet do logout
   const logoutSheetOpacity = useRef(new Animated.Value(0)).current;
@@ -31,32 +45,72 @@ export default function ProfileScreen() {
     }
   }, [profile?.avatar_url]);
 
-  // Animar abertura do bottom sheet de logout
+  // Função para buscar estatísticas do usuário
+  const fetchUserStats = async () => {
+    if (!user?.id) return;
+
+    try {
+      // Buscar número de matches (status = 'mutual')
+      const { data: matchesData, error: matchesError } = await supabase
+        .from('matches')
+        .select('id, compatibility_score', { count: 'exact' })
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+        .eq('status', 'mutual');
+
+      if (matchesError) {
+        console.error('Erro ao buscar matches:', matchesError);
+      }
+
+      // Buscar número de conversas
+      const { data: conversationsData, error: conversationsError } = await supabase
+        .from('conversations')
+        .select('id, match_id!inner(user1_id, user2_id)', { count: 'exact' })
+        .or(`match_id.user1_id.eq.${user.id},match_id.user2_id.eq.${user.id}`);
+
+      if (conversationsError) {
+        console.error('Erro ao buscar conversas:', conversationsError);
+      }
+
+      // Calcular compatibilidade média
+      const compatibilityScores = matchesData
+        ?.map(m => m.compatibility_score)
+        .filter((score): score is number => score !== null) || [];
+
+      const averageCompatibility = compatibilityScores.length > 0
+        ? Math.round(compatibilityScores.reduce((sum, score) => sum + score, 0) / compatibilityScores.length)
+        : null;
+
+      setStats({
+        matchesCount: matchesData?.length || 0,
+        conversationsCount: conversationsData?.length || 0,
+        averageCompatibility,
+      });
+    } catch (error) {
+      console.error('Erro ao buscar estatísticas:', error);
+    }
+  };
+
+  // Carregar estatísticas quando o componente montar
+  useEffect(() => {
+    fetchUserStats();
+  }, [user?.id]);
+
+  // Animar abertura do bottom sheet de logout apenas quando abre
   useEffect(() => {
     if (showLogoutSheet) {
+      // Garantir que começa em 300 antes de animar
+      logoutSheetTranslateY.setValue(300);
+      logoutSheetOpacity.setValue(0);
+
       Animated.parallel([
         Animated.timing(logoutSheetOpacity, {
           toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.spring(logoutSheetTranslateY, {
-          toValue: 0,
-          damping: 20,
-          stiffness: 90,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(logoutSheetOpacity, {
-          toValue: 0,
-          duration: 200,
+          duration: 250,
           useNativeDriver: true,
         }),
         Animated.timing(logoutSheetTranslateY, {
-          toValue: 300,
-          duration: 200,
+          toValue: 0,
+          duration: 300,
           useNativeDriver: true,
         }),
       ]).start();
@@ -71,16 +125,71 @@ export default function ProfileScreen() {
     setShowLogoutSheet(true);
   };
 
-  const handleConfirmLogout = async () => {
-    setShowLogoutSheet(false);
-    try {
-      await signOut();
-      // O _layout.tsx vai redirecionar automaticamente para Welcome quando user for null
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
+  const closeLogoutSheet = () => {
+    // Animar saída
+    Animated.parallel([
+      Animated.timing(logoutSheetOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoutSheetTranslateY, {
+        toValue: 300,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Após animação, fechar modal
+      setShowLogoutSheet(false);
+    });
   };
-  
+
+  const handleConfirmLogout = async () => {
+    closeLogoutSheet();
+    // Aguardar animação antes de fazer logout
+    setTimeout(async () => {
+      try {
+        await signOut();
+        // O _layout.tsx vai redirecionar automaticamente para Welcome quando user for null
+      } catch (error) {
+        console.error('Erro ao fazer logout:', error);
+      }
+    }, 300);
+  };
+
+  // Calcular idade a partir da data de nascimento
+  const calculateAge = (birthDate: string | null): number | null => {
+    if (!birthDate) return null;
+
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+
+    return age;
+  };
+
+  // Extrair cidade e estado do birth_place
+  const getLocation = (): string => {
+    if (!profile?.birth_place) return '';
+
+    // birth_place vem como "Cidade, Estado, País"
+    const parts = profile.birth_place.split(',').map(p => p.trim());
+    if (parts.length >= 2) {
+      return `${parts[0]}, ${parts[1]}`; // Retorna "Cidade, Estado"
+    }
+
+    return profile.birth_place;
+  };
+
+  const age = calculateAge(profile?.birth_date || null);
+  const displayName = profile?.name || 'Usuário';
+  const location = getLocation();
+
   return (
     <View style={styles.container}>
       <ScrollView 
@@ -116,19 +225,27 @@ export default function ProfileScreen() {
             )}
           </View>
           
-          <Text style={styles.profileName}>Luna, 28</Text>
-          <Text style={styles.profileLocation}>São Paulo, SP</Text>
-          
+          <Text style={styles.profileName}>
+            {displayName}{age ? `, ${age}` : ''}
+          </Text>
+          {location && <Text style={styles.profileLocation}>{location}</Text>}
+
           <View style={styles.tagsContainer}>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>Peixes</Text>
-            </View>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>INFP</Text>
-            </View>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>Modo Paquera</Text>
-            </View>
+            {profile?.zodiac_sign && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{profile.zodiac_sign}</Text>
+              </View>
+            )}
+            {profile?.communication_style && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{profile.communication_style}</Text>
+              </View>
+            )}
+            {profile?.looking_for && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{profile.looking_for}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -141,17 +258,19 @@ export default function ProfileScreen() {
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Heart size={20} color={colors.cosmic.rose} />
-            <Text style={styles.statNumber}>24</Text>
+            <Text style={styles.statNumber}>{stats.matchesCount}</Text>
             <Text style={styles.statLabel}>Matches</Text>
           </View>
           <View style={styles.statItem}>
             <MessageCircle size={20} color={colors.cosmic.sage} />
-            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statNumber}>{stats.conversationsCount}</Text>
             <Text style={styles.statLabel}>Conversas</Text>
           </View>
           <View style={styles.statItem}>
             <Star size={20} color={colors.cosmic.gold} />
-            <Text style={styles.statNumber}>89%</Text>
+            <Text style={styles.statNumber}>
+              {stats.averageCompatibility !== null ? `${stats.averageCompatibility}%` : '-'}
+            </Text>
             <Text style={styles.statLabel}>Compatibilidade Média</Text>
           </View>
         </View>
@@ -202,7 +321,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Configurações</Text>
           
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => setShowEditProfileSheet(true)}>
             <Text style={styles.menuText}>Editar Perfil</Text>
             <Edit3 size={16} color={colors.neutral[400]} />
           </TouchableOpacity>
@@ -231,23 +350,29 @@ export default function ProfileScreen() {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
+      {/* Edit Profile Bottom Sheet */}
+      <EditProfileBottomSheet
+        visible={showEditProfileSheet}
+        onClose={() => setShowEditProfileSheet(false)}
+      />
+
       {/* Bottom Sheet de Confirmação de Logout */}
       <Modal
         visible={showLogoutSheet}
         transparent
         animationType="none"
-        onRequestClose={() => setShowLogoutSheet(false)}
+        onRequestClose={closeLogoutSheet}
       >
         <View style={styles.sheetModalContainer}>
           {/* Background com fade */}
           <Animated.View style={[styles.modalOverlay, { opacity: logoutSheetOpacity }]}>
-            <Pressable style={styles.fullPressable} onPress={() => setShowLogoutSheet(false)} />
+            <Pressable style={styles.fullPressable} onPress={closeLogoutSheet} />
           </Animated.View>
 
           {/* Bottom Sheet com slide */}
           <Pressable
             style={styles.modalOverlayPressable}
-            onPress={() => setShowLogoutSheet(false)}
+            onPress={closeLogoutSheet}
           >
             <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: logoutSheetTranslateY }] }]}>
               <Pressable onPress={(e) => e.stopPropagation()}>
@@ -262,7 +387,7 @@ export default function ProfileScreen() {
                   <View style={styles.sheetButtons}>
                     <TouchableOpacity
                       style={styles.sheetButtonCancel}
-                      onPress={() => setShowLogoutSheet(false)}
+                      onPress={closeLogoutSheet}
                     >
                       <Text style={styles.sheetButtonCancelText}>Cancelar</Text>
                     </TouchableOpacity>

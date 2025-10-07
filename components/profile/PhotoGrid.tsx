@@ -55,32 +55,22 @@ export default function PhotoGrid({ userId, avatarUrl }: PhotoGridProps) {
     allSlots.push({ type: 'empty' as const, url: null });
   }
 
-  // Animar abertura do bottom sheet
+  // Animar abertura do bottom sheet apenas quando abre
   useEffect(() => {
     if (showDeleteSheet) {
+      // Garantir que começa em 300 antes de animar
+      deleteSheetTranslateY.setValue(300);
+      deleteSheetOpacity.setValue(0);
+
       Animated.parallel([
         Animated.timing(deleteSheetOpacity, {
           toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.spring(deleteSheetTranslateY, {
-          toValue: 0,
-          damping: 20,
-          stiffness: 90,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(deleteSheetOpacity, {
-          toValue: 0,
-          duration: 200,
+          duration: 250,
           useNativeDriver: true,
         }),
         Animated.timing(deleteSheetTranslateY, {
-          toValue: 300,
-          duration: 200,
+          toValue: 0,
+          duration: 300,
           useNativeDriver: true,
         }),
       ]).start();
@@ -92,17 +82,38 @@ export default function PhotoGrid({ userId, avatarUrl }: PhotoGridProps) {
     setShowDeleteSheet(true);
   };
 
+  const closeDeleteSheet = () => {
+    // Animar saída
+    Animated.parallel([
+      Animated.timing(deleteSheetOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(deleteSheetTranslateY, {
+        toValue: 300,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Após animação, fechar modal
+      setShowDeleteSheet(false);
+      setPhotoToDelete(null);
+    });
+  };
+
   const handleConfirmDelete = async () => {
     if (!photoToDelete) return;
 
-    setShowDeleteSheet(false);
-    await deletePhoto(photoToDelete.id, photoToDelete.url);
-    setPhotoToDelete(null);
+    closeDeleteSheet();
+    // Aguardar animação antes de deletar
+    setTimeout(async () => {
+      await deletePhoto(photoToDelete.id, photoToDelete.url);
+    }, 300);
   };
 
   const handleCancelDelete = () => {
-    setShowDeleteSheet(false);
-    setPhotoToDelete(null);
+    closeDeleteSheet();
   };
 
   const toggleExpanded = () => {
