@@ -35,12 +35,31 @@ yarn-error.*
 # Google Service Account Keys (sensitive)
 *-service-account.json
 nada-app-*.json
-*.json
 
 # typescript
 *.tsbuildinfo
 .vercel
 .env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# EAS
+.eas/
+
+# Bun
+bun.lock
 
 # Android
 android/app/build/

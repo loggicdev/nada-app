@@ -1,0 +1,56 @@
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production-android-internal": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production-ios-testflight": {
+      "distribution": "store",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "NODE_PACKAGE_MANAGER": "npm"
+      },
+      "cache": {
+        "disabled": false
+      }
+    }
+  },
+  "submit": {
+    "production": {},
+    "production-android-internal": {
+      "android": {
+        "track": "internal"
+      }
+    },
+    "production-ios-testflight": {
+      "ios": {}
+    }
+  },
+  "cli": {
+    "version": ">= 16.20.4"
+  }
+}
