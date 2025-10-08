@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Conexões Harmoniosas: Aplicativo de Encontros Baseado em Astrologia e Psicologia",
-    "slug": "conexoes-harmoniosas-aplicativo-de-encontros-baseado-em-astrologia-e-psicologia",
+    "name": "NADA-APP",
+    "slug": "nada-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "nadaapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,14 +15,17 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.conexoes-harmoniosas-aplicativo-de-encontros-baseado-em-astrologia-e-psicologia"
+      "bundleIdentifier": "app.dba.nada",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.conexoes-harmoniosas-aplicativo-de-encontros-baseado-em-astrologia-e-psicologia"
+      "package": "app.dba.nada"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -37,6 +40,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://rork.com/"
+      },
+      "eas": {
+        "projectId": "546c73c5-8240-4156-93a6-53e26957f4ca"
+      }
+    },
+    "owner": "codicapps"
   }
 }

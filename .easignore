@@ -1,0 +1,24 @@
+# .easignore
+# Files and directories to ignore during EAS build uploads
+
+# Build artifacts
+android/app/build/
+android/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+
+# Node modules (will be reinstalled)
+node_modules/
+
+# Cache directories
+.expo/
+.metro-health-check*
+
+# Local files
+.DS_Store
+*.log
+.env.local
+
+# Git
+.git/

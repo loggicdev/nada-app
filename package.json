@@ -6,7 +6,9 @@
     "start": "bunx rork start -p se1nqrxhf4pdd3lec3p5e --tunnel",
     "start-web": "bunx rork start -p se1nqrxhf4pdd3lec3p5e --web --tunnel",
     "start-web-dev": "DEBUG=expo* bunx rork start -p se1nqrxhf4pdd3lec3p5e --web --tunnel",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -49,6 +51,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
+    "@react-native-community/cli": "^20.0.1",
     "@types/react": "~19.0.10",
     "axios": "^1.12.2",
     "cheerio": "^1.1.2",
