@@ -97,12 +97,12 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
       // IDs de usuários que já tiveram ação
       const actionedUserIds = new Set(
-        actionsResult.data?.map(a => a.target_user_id) || []
+        actionsResult.data?.map((a: any) => a.target_user_id) || []
       );
 
       // IDs de usuários que já tiveram match
       const matchedUserIds = new Set(
-        matchesResult.data?.map(m =>
+        matchesResult.data?.map((m: any) =>
           m.user1_id === user.id ? m.user2_id : m.user1_id
         ) || []
       );
@@ -176,7 +176,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       }
 
       // Buscar TODOS os interesses de uma vez (batch query)
-      const userIds = filteredProfiles.map(p => p.id);
+      const userIds = filteredProfiles.map((p: any) => p.id);
       const { data: allInterests } = await supabase
         .from('user_interests')
         .select('user_id, interest')
@@ -191,7 +191,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
       // Agrupar interesses por user_id
       const interestsByUser = new Map<string, string[]>();
-      allInterests?.forEach(item => {
+      allInterests?.forEach((item: any) => {
         if (!interestsByUser.has(item.user_id)) {
           interestsByUser.set(item.user_id, []);
         }
@@ -200,7 +200,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
       // Agrupar fotos por user_id
       const photosByUser = new Map<string, string[]>();
-      allPhotos?.forEach(item => {
+      allPhotos?.forEach((item: any) => {
         if (!photosByUser.has(item.user_id)) {
           photosByUser.set(item.user_id, []);
         }
@@ -208,7 +208,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       });
 
       // Montar candidatos (não precisa mais de Promise.all)
-      const candidatesWithData = filteredProfiles.map((candidateProfile) => {
+      const candidatesWithData = filteredProfiles.map((candidateProfile: any) => {
         // Pegar interesses do mapa
         const interests = interestsByUser.get(candidateProfile.id) || [];
 
@@ -263,7 +263,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
       // Ordenar por compatibilidade (maior primeiro) e limitar a 20
       const sortedCandidates = candidatesWithData
-        .sort((a, b) => (b.compatibilityScore || 0) - (a.compatibilityScore || 0))
+        .sort((a: MatchCandidate, b: MatchCandidate) => (b.compatibilityScore || 0) - (a.compatibilityScore || 0))
         .slice(0, 20);
 
       setCandidates(sortedCandidates);
@@ -296,7 +296,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
     try {
       // Buscar dados do candidato
-      const candidate = candidates.find(c => c.id === userId);
+      const candidate = candidates.find((c: MatchCandidate) => c.id === userId);
       if (!candidate) {
         console.error('❌ Candidato não encontrado:', userId);
         return { isMatch: false, user: {} as any };
@@ -379,7 +379,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
               cosmicInsights: [],
               matchedAt: new Date().toISOString()
             };
-            setMatches(prev => [newMatch, ...prev]);
+            setMatches((prev: Match[]) => [newMatch, ...prev]);
             isMatch = true;
           }
         } else {
@@ -435,7 +435,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       }
 
       // Remover candidato da lista (já foi acionado)
-      setCandidates(prev => prev.filter(c => c.id !== userId));
+      setCandidates((prev: MatchCandidate[]) => prev.filter((c: MatchCandidate) => c.id !== userId));
 
       return {
         isMatch,
@@ -467,7 +467,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       }
 
       // Remover candidato da lista (já foi acionado)
-      setCandidates(prev => prev.filter(c => c.id !== userId));
+      setCandidates((prev: MatchCandidate[]) => prev.filter((c: MatchCandidate) => c.id !== userId));
     } catch (error) {
       console.error('Erro ao processar pass:', error);
     }
@@ -485,19 +485,19 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
     const newMessage: Message = {
       id: `msg-${Date.now()}`,
       senderId: 'current-user',
-      receiverId: conversations.find(c => c.id === conversationId)?.participants.find(p => p !== 'current-user') || '',
+      receiverId: conversations.find((c: Conversation) => c.id === conversationId)?.participants.find((p: string) => p !== 'current-user') || '',
       content,
       type,
       timestamp: new Date().toISOString(),
       read: false
     };
 
-    setMessages(prev => ({
+    setMessages((prev: {[key: string]: Message[]}) => ({
       ...prev,
       [conversationId]: [...(prev[conversationId] || []), newMessage]
     }));
 
-    setConversations(prev => prev.map(conv => 
+    setConversations((prev: Conversation[]) => prev.map((conv: Conversation) =>
       conv.id === conversationId 
         ? { ...conv, lastMessage: newMessage, updatedAt: new Date().toISOString() }
         : conv
@@ -505,18 +505,18 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
   }, [conversations]);
 
   const addReaction = useCallback((messageId: string, emoji: string) => {
-    setMessages(prev => {
+    setMessages((prev: {[key: string]: Message[]}) => {
       const newMessages = { ...prev };
       Object.keys(newMessages).forEach(convId => {
-        newMessages[convId] = newMessages[convId].map(msg => {
+        newMessages[convId] = newMessages[convId].map((msg: Message) => {
           if (msg.id === messageId) {
             const reactions = msg.reactions || [];
-            const existingReaction = reactions.find(r => r.userId === 'current-user');
+            const existingReaction = reactions.find((r: any) => r.userId === 'current-user');
             
             if (existingReaction) {
               return {
                 ...msg,
-                reactions: reactions.map(r => 
+                reactions: reactions.map((r: any) => 
                   r.userId === 'current-user' ? { ...r, emoji } : r
                 )
               };
@@ -540,9 +540,9 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
   }, []);
 
   const markAsRead = useCallback((conversationId: string) => {
-    setMessages(prev => ({
+    setMessages((prev: {[key: string]: Message[]}) => ({
       ...prev,
-      [conversationId]: (prev[conversationId] || []).map(msg => ({ ...msg, read: true }))
+      [conversationId]: (prev[conversationId] || []).map((msg: Message) => ({ ...msg, read: true }))
     }));
   }, []);
 
@@ -610,7 +610,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
         }
         
         // Encontrar a conversa correspondente para obter os participantes
-        const conversation = userConversations.find(c => c.id === msg.conversation_id);
+        const conversation = userConversations.find((c: any) => c.id === msg.conversation_id);
         const match = conversation?.matches;
         const otherUserId = match ? (match.user1_id === user.id ? match.user2_id : match.user1_id) : '';
         
@@ -637,7 +637,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
         .select('id, name, avatar_url')
         .in('id', otherUserIds);
 
-      const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+      const usersMap = new Map(usersData?.map((u: any) => [u.id, u]) || []);
 
       // Converter para o formato esperado
       const formattedConversations: Conversation[] = userConversations.map((conv: any) => {
@@ -651,9 +651,9 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
           createdAt: conv.created_at,
           updatedAt: conv.updated_at || conv.created_at,
           otherUser: otherUser ? {
-            id: otherUser.id,
-            name: otherUser.name || 'Usuário',
-            avatar: otherUser.avatar_url || undefined
+            id: (otherUser as any).id,
+            name: (otherUser as any).name || 'Usuário',
+            avatar: (otherUser as any).avatar_url || undefined
           } : undefined
         };
       });
