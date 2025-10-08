@@ -36,14 +36,16 @@ interface SwipeCardProps {
 function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPress }: SwipeCardProps) {
   const pan = useRef(new Animated.ValueXY()).current;
   const rotate = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
   const [imageError, setImageError] = useState<boolean>(false);
 
   // Reset animation values when card changes
   useEffect(() => {
     pan.setValue({ x: 0, y: 0 });
     rotate.setValue(0);
+    opacity.setValue(1);
     setImageError(false);
-  }, [cardKey, pan, rotate]);
+  }, [cardKey, pan, rotate, opacity]);
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -74,26 +76,38 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
       const shouldSwipeLeft = gestureState.dx < -swipeThreshold || gestureState.vx < -velocityThreshold;
       
       if (shouldSwipeRight) {
-        // Animate card sliding right (like)
-        Animated.timing(pan, {
-          toValue: { x: screenWidth, y: 0 },
-          duration: 300,
-          useNativeDriver: false,
-        }).start(() => {
-          // Chamar callback ANTES de resetar (para trocar card primeiro)
+        // Animate card sliding right e desaparecendo
+        Animated.parallel([
+          Animated.timing(pan, {
+            toValue: { x: screenWidth, y: 0 },
+            duration: 250,
+            useNativeDriver: false,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: false,
+          })
+        ]).start(() => {
+          // Callback só quando animação terminar
           onSwipeRight();
-          // Reset será feito pelo useEffect quando cardKey mudar
         });
       } else if (shouldSwipeLeft) {
-        // Animate card sliding left (dislike)
-        Animated.timing(pan, {
-          toValue: { x: -screenWidth, y: 0 },
-          duration: 300,
-          useNativeDriver: false,
-        }).start(() => {
-          // Chamar callback ANTES de resetar (para trocar card primeiro)
+        // Animate card sliding left e desaparecendo
+        Animated.parallel([
+          Animated.timing(pan, {
+            toValue: { x: -screenWidth, y: 0 },
+            duration: 250,
+            useNativeDriver: false,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: false,
+          })
+        ]).start(() => {
+          // Callback só quando animação terminar
           onSwipeLeft();
-          // Reset será feito pelo useEffect quando cardKey mudar
         });
       } else {
         // Spring back to center
@@ -138,6 +152,7 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
       style={[
         styles.card,
         {
+          opacity: opacity,
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
@@ -215,8 +230,7 @@ function SwipeCard({ user, onSwipeLeft, onSwipeRight, isTop, cardKey, onCardPres
 
 export default function MatchScreen() {
   const insets = useSafeAreaInsets();
-  const { currentCandidate, getNextCandidate, likeUser, dislikeUser, isLoading: contextLoading } = useMatch();
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const { currentCandidate, likeUser, dislikeUser, candidates } = useMatch();
   const [cardKey, setCardKey] = useState<string>('0');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
@@ -224,6 +238,17 @@ export default function MatchScreen() {
   const [toastVisible, setToastVisible] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
   const [toastType, setToastType] = useState<ToastType>('success');
+
+  // Debug logs
+  useEffect(() => {
+    console.log('🔍 MatchScreen state:', {
+      hasCurrentCandidate: !!currentCandidate,
+      candidateId: currentCandidate?.id,
+      candidateName: currentCandidate?.name,
+      totalCandidates: candidates?.length || 0,
+      isProcessing
+    });
+  }, [currentCandidate, candidates, isProcessing]);
 
   const showToast = (message: string, type: ToastType = 'success') => {
     setToastMessage(message);
@@ -238,23 +263,27 @@ export default function MatchScreen() {
   }, []);
 
 
-  const handleSwipeLeft = async () => {
-    if (currentCandidate && !isLoading && !isProcessing) {
+  const handleSwipeLeft = () => {
+    if (currentCandidate && !isProcessing) {
       setIsProcessing(true);
       const candidateName = currentCandidate.name;
       const candidateId = currentCandidate.id;
 
-      try {
-        // Trocar card (a animação já foi feita pelo SwipeCard)
-        setCardKey(prev => String(Number(prev) + 1));
+      // Toast imediato
+      showToast(`Você dispensou ${candidateName}`, 'info');
 
-        // Salvar rejeição em background
-        await dislikeUser(candidateId);
-        showToast(`Você dispensou ${candidateName}`, 'info');
-      } finally {
-        // Pequeno delay para evitar múltiplos cliques
-        setTimeout(() => setIsProcessing(false), 500);
+      // Trocar card imediatamente
+      setCardKey(prev => String(Number(prev) + 1));
+
+      // Salvar no banco em background (dislikeUser não retorna Promise)
+      try {
+        dislikeUser(candidateId);
+      } catch (error) {
+        console.error('Erro ao salvar pass:', error);
       }
+
+      // Liberar após delay
+      setTimeout(() => setIsProcessing(false), 300);
     }
   };
 
@@ -264,25 +293,32 @@ export default function MatchScreen() {
     }
   };
 
-  const handleSwipeRight = async () => {
-    if (currentCandidate && !isLoading && !isProcessing) {
-      setIsLoading(true);
+  const handleSwipeRight = () => {
+    console.log('💜 handleSwipeRight chamada:', {
+      hasCurrentCandidate: !!currentCandidate,
+      candidateId: currentCandidate?.id,
+      candidateName: currentCandidate?.name,
+      isProcessing
+    });
+
+    if (currentCandidate && !isProcessing) {
       setIsProcessing(true);
       const candidateName = currentCandidate.name;
       const candidateId = currentCandidate.id;
 
-      try {
-        // Trocar card (a animação já foi feita pelo SwipeCard)
-        setCardKey(prev => String(Number(prev) + 1));
+      console.log('🚀 Iniciando processo de like:', { candidateId, candidateName });
 
-        // Fazer like em background
-        const result = await likeUser(candidateId);
+      // Trocar card imediatamente
+      setCardKey(prev => String(Number(prev) + 1));
 
+      // Processar like em background
+      console.log('📞 Chamando likeUser...');
+      likeUser(candidateId).then(result => {
+        console.log('📋 Resultado do likeUser:', result);
+        
         if (result.isMatch) {
-          // Mostrar toast de match
           showToast(`🎉 Match com ${candidateName}!`, 'success');
 
-          // Mostrar alert sem delay (não bloqueia a UI)
           setTimeout(() => {
             Alert.alert(
               '💫 É um Match!',
@@ -294,18 +330,19 @@ export default function MatchScreen() {
                 }}
               ]
             );
-          }, 300);
+          }, 100);
         } else {
+          console.log('💜 Like registrado com sucesso');
           showToast(`💜 Você curtiu ${candidateName}`, 'success');
         }
-      } catch (error) {
-        console.error('Error liking user:', error);
+      }).catch(error => {
+        console.error('❌ Error liking user:', error);
+        console.error('❌ Error details:', JSON.stringify(error, null, 2));
         showToast('Erro ao curtir perfil', 'error');
-      } finally {
-        setIsLoading(false);
-        // Pequeno delay para evitar múltiplos cliques
-        setTimeout(() => setIsProcessing(false), 500);
-      }
+      });
+
+      // Liberar após delay
+      setTimeout(() => setIsProcessing(false), 300);
     }
   };
 

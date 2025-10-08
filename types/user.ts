@@ -58,6 +58,11 @@ export interface Conversation {
   lastMessage?: Message;
   createdAt: string;
   updatedAt: string;
+  otherUser?: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
 }
 
 export interface MatchCandidate extends User {

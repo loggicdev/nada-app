@@ -9,7 +9,8 @@ import {
   Image,
   Platform,
   Alert,
-  Keyboard
+  Keyboard,
+  Animated
 } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,8 +25,10 @@ import {
 } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useMatch } from '@/contexts/MatchContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { mockUsers } from '@/mocks/users';
-import { Message } from '@/types/user';
+import { supabase } from '@/lib/supabase';
+import { Message, MatchCandidate } from '@/types/user';
 
 const REACTION_EMOJIS = ['❤️', '😍', '😂', '😮', '😢', '👍'];
 
@@ -110,16 +113,100 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { conversations, messages, sendMessage, addReaction, markAsRead } = useMatch();
+  const { user: currentUser } = useAuthContext();
   const [inputText, setInputText] = useState<string>('');
   const [imageError, setImageError] = useState<boolean>(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const [otherUser, setOtherUser] = useState<MatchCandidate | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState<boolean>(true);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const conversation = conversations.find(c => c.id === id);
   const conversationMessages = messages[id || ''] || [];
   
-  const otherUserId = conversation?.participants.find(p => p !== 'current-user');
-  const otherUser = mockUsers.find(u => u.id === otherUserId);
+  // Debug logs
+  useEffect(() => {
+    console.log('💬 Chat Debug:', {
+      conversationId: id,
+      conversationsCount: conversations.length,
+      conversationFound: !!conversation,
+      currentUserId: currentUser?.id,
+      participants: conversation?.participants,
+      allConversationIds: conversations.map(c => c.id),
+      conversationDetails: conversation
+    });
+  }, [id, conversations, conversation, currentUser?.id]);
+  
+  // Encontrar o outro usuário da conversa (que não é o atual)
+  const otherUserId = conversation?.participants.find(p => p !== currentUser?.id);
+
+  // Carregar dados do outro usuário
+  useEffect(() => {
+    const loadOtherUser = async () => {
+      if (!otherUserId) {
+        setIsLoadingUser(false);
+        return;
+      }
+
+      try {
+        // Primeiro tentar nos mocks (para conversas de desenvolvimento)
+        const mockUser = mockUsers.find(u => u.id === otherUserId);
+        if (mockUser) {
+          setOtherUser(mockUser);
+          setIsLoadingUser(false);
+          return;
+        }
+
+        // Buscar no banco de dados
+        const { data: profile, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', otherUserId)
+          .single();
+
+        if (error || !profile) {
+          console.error('Erro ao carregar perfil do usuário:', error);
+          setIsLoadingUser(false);
+          return;
+        }
+
+        // Buscar fotos do usuário
+        const { data: photos } = await supabase
+          .from('user_photos')
+          .select('photo_url')
+          .eq('user_id', otherUserId)
+          .order('order_index', { ascending: true });
+
+        const userPhotos = photos?.map(p => p.photo_url) || [];
+        if (profile.avatar_url && !userPhotos.includes(profile.avatar_url)) {
+          userPhotos.unshift(profile.avatar_url);
+        }
+
+        const user: MatchCandidate = {
+          id: profile.id,
+          name: profile.name || 'Usuário',
+          age: profile.age || 0,
+          photos: userPhotos.length > 0 ? userPhotos : (profile.avatar_url ? [profile.avatar_url] : []),
+          bio: (profile as any).bio || 'Sem bio',
+          location: profile.birth_place || 'Localização não informada',
+          zodiacSign: profile.zodiac_sign || 'Não informado',
+          personalityType: (profile as any).personality_type || 'Não informado',
+          intentions: [],
+          interests: [],
+          lastActive: profile.updated_at || profile.created_at || new Date().toISOString(),
+          distance: 1.5
+        };
+
+        setOtherUser(user);
+      } catch (error) {
+        console.error('Erro ao carregar usuário:', error);
+      } finally {
+        setIsLoadingUser(false);
+      }
+    };
+
+    loadOtherUser();
+  }, [otherUserId]);
 
   useEffect(() => {
     // Configure SystemUI safely
@@ -184,10 +271,102 @@ export default function ChatScreen() {
     addReaction(messageId, emoji);
   };
 
+  // Skeleton Loader Component
+  function ChatSkeletonLoader() {
+    const pulseAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: false,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0,
+            duration: 1500,
+            useNativeDriver: false,
+          }),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    }, []);
+
+    const animatedOpacity = pulseAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.3, 0.7],
+    });
+
+    return (
+      <View style={styles.container}>
+        {/* Skeleton Header */}
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <Animated.View style={[styles.skeletonBox, { width: 32, height: 32, borderRadius: 16, opacity: animatedOpacity }]} />
+          
+          <View style={styles.headerInfo}>
+            <Animated.View style={[styles.skeletonBox, { width: 40, height: 40, borderRadius: 20, opacity: animatedOpacity }]} />
+            <View style={styles.headerText}>
+              <Animated.View style={[styles.skeletonBox, { width: 120, height: 18, marginBottom: 4, opacity: animatedOpacity }]} />
+              <Animated.View style={[styles.skeletonBox, { width: 80, height: 14, opacity: animatedOpacity }]} />
+            </View>
+          </View>
+          
+          <Animated.View style={[styles.skeletonBox, { width: 24, height: 24, borderRadius: 12, opacity: animatedOpacity }]} />
+        </View>
+
+        {/* Skeleton Messages */}
+        <ScrollView style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}>
+          {/* Mensagem do outro usuário */}
+          <View style={[styles.messageContainer, styles.otherMessage]}>
+            <Animated.View style={[styles.skeletonBox, { width: '70%', height: 40, borderRadius: 16, opacity: animatedOpacity }]} />
+          </View>
+          
+          {/* Mensagem própria */}
+          <View style={[styles.messageContainer, styles.ownMessage]}>
+            <Animated.View style={[styles.skeletonBox, { width: '60%', height: 35, borderRadius: 16, opacity: animatedOpacity }]} />
+          </View>
+
+          {/* Mensagem do outro usuário */}
+          <View style={[styles.messageContainer, styles.otherMessage]}>
+            <Animated.View style={[styles.skeletonBox, { width: '80%', height: 50, borderRadius: 16, opacity: animatedOpacity }]} />
+          </View>
+
+          {/* Mensagem própria */}
+          <View style={[styles.messageContainer, styles.ownMessage]}>
+            <Animated.View style={[styles.skeletonBox, { width: '45%', height: 30, borderRadius: 16, opacity: animatedOpacity }]} />
+          </View>
+
+          {/* Mensagem do outro usuário */}
+          <View style={[styles.messageContainer, styles.otherMessage]}>
+            <Animated.View style={[styles.skeletonBox, { width: '65%', height: 45, borderRadius: 16, opacity: animatedOpacity }]} />
+          </View>
+        </ScrollView>
+
+        {/* Skeleton Input Area */}
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom + 10, 20) }]}>
+          <Animated.View style={[styles.skeletonBox, { flex: 1, height: 44, borderRadius: 22, marginRight: 12, opacity: animatedOpacity }]} />
+          <Animated.View style={[styles.skeletonBox, { width: 44, height: 44, borderRadius: 22, opacity: animatedOpacity }]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (isLoadingUser) {
+    return <ChatSkeletonLoader />;
+  }
+
   if (!conversation || !otherUser) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
         <Text>Conversa não encontrada</Text>
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={{ marginTop: 16, padding: 12, backgroundColor: colors.cosmic.purple, borderRadius: 8 }}
+        >
+          <Text style={{ color: 'white' }}>Voltar</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -574,5 +753,9 @@ const styles = StyleSheet.create({
   },
   sendButtonActive: {
     backgroundColor: colors.cosmic.purple,
+  },
+  skeletonBox: {
+    backgroundColor: '#2D3748',
+    borderRadius: 8,
   },
 });

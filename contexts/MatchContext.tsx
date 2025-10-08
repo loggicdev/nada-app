@@ -25,6 +25,7 @@ interface MatchContextType {
   markAsRead: (conversationId: string) => void;
   getNextCandidate: () => void;
   loadCandidates: () => Promise<void>;
+  loadConversations: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -38,12 +39,9 @@ const createInitialCandidates = (): MatchCandidate[] => mockUsers.map(user => ({
 export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() => {
   const { user, profile } = useAuthContext();
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
-  const [matches, setMatches] = useState<Match[]>(mockMatches);
-  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
-  const [messages, setMessages] = useState<{ [conversationId: string]: Message[] }>({
-    'conv-1': mockMessages,
-    'conv-2': []
-  });
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<{ [conversationId: string]: Message[] }>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Candidatos disponíveis são todos os carregados (já filtrados do banco)
@@ -73,19 +71,6 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
     // Compatibilidade por objetivos
     if (candidate.looking_for === profile.looking_for) {
       score += 5;
-    }
-
-    // Compatibilidade por estilo de vida
-    if (candidate.lifestyle?.exercise === profile.lifestyle?.exercise) {
-      score += 5;
-    }
-
-    if (candidate.lifestyle?.smoking === profile.lifestyle?.smoking) {
-      score += 3;
-    }
-
-    if (candidate.lifestyle?.alcohol === profile.lifestyle?.alcohol) {
-      score += 3;
     }
 
     // Garantir que está entre 50 e 99
@@ -262,14 +247,14 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
           name: candidateProfile.name || 'Usuário',
           age: candidateProfile.age || 0,
           photos: userPhotos,
-          bio: candidateProfile.bio || 'Sem bio',
+          bio: (candidateProfile as any).bio || 'Sem bio',
           location,
           zodiacSign: candidateProfile.zodiac_sign || 'Não informado',
-          personalityType: candidateProfile.personality_type || 'Não informado',
+          personalityType: (candidateProfile as any).personality_type || 'Não informado',
           intentions: [],
           interests,
           compatibilityScore,
-          lastActive: candidateProfile.updated_at || candidateProfile.created_at,
+          lastActive: candidateProfile.updated_at || candidateProfile.created_at || new Date().toISOString(),
           distance: Math.round((Math.random() * 5 + 0.5) * 10) / 10,
         };
 
@@ -297,7 +282,15 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
   }, [user?.id, profile?.id]);
 
   const likeUser = useCallback(async (userId: string): Promise<MatchResult> => {
+    console.log('🚀 likeUser iniciada:', { 
+      userId, 
+      currentUser: user?.id, 
+      hasProfile: !!profile,
+      candidatesCount: candidates.length 
+    });
+
     if (!user?.id) {
+      console.error('❌ Usuário não autenticado');
       return { isMatch: false, user: {} as any };
     }
 
@@ -305,8 +298,11 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       // Buscar dados do candidato
       const candidate = candidates.find(c => c.id === userId);
       if (!candidate) {
+        console.error('❌ Candidato não encontrado:', userId);
         return { isMatch: false, user: {} as any };
       }
+
+      console.log('✅ Candidato encontrado:', candidate.name);
 
       let isMatch = false;
       let conversationId: string | undefined;
@@ -315,27 +311,51 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
       const { data: existingMatches, error: checkError } = await supabase
         .from('matches')
         .select('*')
-        .or(`and(user1_id.eq.${userId},user2_id.eq.${user.id}),and(user1_id.eq.${user.id},user2_id.eq.${userId})`);
+        .eq('user1_id', userId)
+        .eq('user2_id', user.id);
 
-      if (checkError) {
-        console.error('Erro ao verificar matches:', checkError);
-        throw checkError;
+      // Verificar também na direção oposta
+      const { data: existingMatches2, error: checkError2 } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('user1_id', user.id)
+        .eq('user2_id', userId);
+
+      if (checkError || checkError2) {
+        console.error('Erro ao verificar matches:', checkError || checkError2);
+        throw checkError || checkError2;
       }
 
-      // Se já existe match, não fazer nada
-      if (existingMatches && existingMatches.length > 0) {
-        const existingMatch = existingMatches[0];
+      // Combinar resultados
+      const allExistingMatches = [...(existingMatches || []), ...(existingMatches2 || [])];
+
+      console.log('🔍 Verificando matches existentes:', {
+        userId,
+        currentUserId: user.id,
+        existingMatches1: existingMatches?.length || 0,
+        existingMatches2: existingMatches2?.length || 0,
+        total: allExistingMatches.length
+      });
+
+      // Se já existe match, verificar se precisa atualizar
+      if (allExistingMatches && allExistingMatches.length > 0) {
+        const existingMatch = allExistingMatches[0];
+        console.log('📋 Match existente encontrado:', existingMatch);
 
         // Se o match é do outro usuário para nós e está pending, tornar mutual
         if (existingMatch.user1_id === userId && existingMatch.status === 'pending') {
+          console.log('💖 Tornando match mútuo...');
+          
           const { error: updateError } = await supabase
             .from('matches')
             .update({ status: 'mutual' })
             .eq('id', existingMatch.id);
 
           if (updateError) {
-            console.error('Erro ao atualizar match:', updateError);
+            console.error('❌ Erro ao atualizar match:', updateError);
           } else {
+            console.log('✅ Match atualizado para mútuo');
+            
             // Criar conversa
             const { data: newConversation, error: convError } = await supabase
               .from('conversations')
@@ -345,8 +365,10 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
 
             if (!convError && newConversation) {
               conversationId = newConversation.id;
-              setConversations(prev => [newConversation, ...prev]);
-              setMessages(prev => ({ ...prev, [conversationId!]: [] }));
+              console.log('💬 Conversa criada:', conversationId);
+              
+              // Recarregar conversas do contexto
+              await loadConversations();
             }
 
             const newMatch: Match = {
@@ -360,20 +382,55 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
             setMatches(prev => [newMatch, ...prev]);
             isMatch = true;
           }
+        } else {
+          console.log('⚠️ Match já existe mas não é elegível para tornar mútuo');
         }
       } else {
         // Criar novo match pending
-        const { error: insertError } = await supabase
+        console.log('🆕 Criando novo match pending...');
+        
+        const matchData = {
+          user1_id: user.id,
+          user2_id: userId,
+          compatibility_score: candidate.compatibilityScore || 0,
+          status: 'pending'
+        };
+        
+        console.log('📋 Dados do match a inserir:', matchData);
+        
+        const { data: insertedMatch, error: insertError } = await supabase
           .from('matches')
-          .insert({
-            user1_id: user.id,
-            user2_id: userId,
-            compatibility_score: candidate.compatibilityScore || 0,
-            status: 'pending'
-          });
+          .insert(matchData)
+          .select()
+          .single();
 
-        if (insertError && insertError.code !== '23505') {
-          console.error('Erro ao criar match:', insertError);
+        console.log('📋 Resultado da inserção:', { insertedMatch, insertError });
+
+        if (insertError) {
+          if (insertError.code === '23505') {
+            console.log('⚠️ Match já existe (violação de chave única)');
+          } else {
+            console.error('❌ Erro ao criar match:', insertError);
+            throw insertError;
+          }
+        } else {
+          console.log('✅ Match pending criado com sucesso:', insertedMatch);
+        }
+        
+        // Também registrar na tabela user_actions
+        console.log('📝 Registrando ação do usuário...');
+        const { error: actionError } = await supabase
+          .from('user_actions')
+          .insert({
+            user_id: user.id,
+            target_user_id: userId,
+            action_type: 'like'
+          });
+          
+        if (actionError) {
+          console.error('❌ Erro ao registrar ação:', actionError);
+        } else {
+          console.log('✅ Ação registrada com sucesso');
         }
       }
 
@@ -489,6 +546,142 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
     }));
   }, []);
 
+  // Função para carregar conversas do banco
+  const loadConversations = useCallback(async () => {
+    if (!user?.id) {
+      console.log('❌ loadConversations: usuário não encontrado');
+      return;
+    }
+
+    try {
+      console.log('🔄 Carregando conversas do banco para usuário:', user.id);
+      
+      // Buscar conversas onde o usuário atual participa através de matches
+      const { data: conversationsData, error } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          match_id,
+          created_at,
+          updated_at,
+          matches!inner (
+            id,
+            user1_id,
+            user2_id,
+            status
+          )
+        `)
+        .eq('matches.status', 'mutual');
+
+      if (error) {
+        console.error('❌ Erro ao carregar conversas:', error);
+        return;
+      }
+
+      console.log('✅ Conversas encontradas no banco:', conversationsData?.length || 0);
+
+      // Filtrar apenas conversas onde o usuário atual participa
+      const userConversations = conversationsData?.filter((conv: any) => {
+        const match = conv.matches;
+        return match.user1_id === user.id || match.user2_id === user.id;
+      }) || [];
+
+      console.log('🔍 Conversas filtradas para o usuário:', userConversations.length);
+
+      if (userConversations.length === 0) {
+        setConversations([]);
+        setMessages({});
+        return;
+      }
+
+      // Buscar mensagens para todas as conversas
+      const conversationIds = userConversations.map((conv: any) => conv.id);
+      const { data: messagesData } = await supabase
+        .from('messages')
+        .select('*')
+        .in('conversation_id', conversationIds)
+        .order('sent_at', { ascending: true });
+
+      // Agrupar mensagens por conversa
+      const messagesByConversation: { [conversationId: string]: Message[] } = {};
+      messagesData?.forEach((msg: any) => {
+        if (!messagesByConversation[msg.conversation_id]) {
+          messagesByConversation[msg.conversation_id] = [];
+        }
+        
+        // Encontrar a conversa correspondente para obter os participantes
+        const conversation = userConversations.find(c => c.id === msg.conversation_id);
+        const match = conversation?.matches;
+        const otherUserId = match ? (match.user1_id === user.id ? match.user2_id : match.user1_id) : '';
+        
+        messagesByConversation[msg.conversation_id].push({
+          id: msg.id,
+          senderId: msg.sender_id,
+          receiverId: msg.sender_id === user.id ? otherUserId : user.id,
+          content: msg.content,
+          timestamp: msg.sent_at,
+          type: msg.message_type || 'text',
+          read: msg.read_at !== null,
+          reactions: []
+        });
+      });
+
+      // Buscar informações dos outros usuários
+      const otherUserIds = userConversations.map((conv: any) => {
+        const match = conv.matches;
+        return match.user1_id === user.id ? match.user2_id : match.user1_id;
+      });
+
+      const { data: usersData } = await supabase
+        .from('user_profiles')
+        .select('id, name, avatar_url')
+        .in('id', otherUserIds);
+
+      const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+
+      // Converter para o formato esperado
+      const formattedConversations: Conversation[] = userConversations.map((conv: any) => {
+        const match = conv.matches;
+        const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+        const otherUser = usersMap.get(otherUserId);
+        
+        return {
+          id: conv.id,
+          participants: [user.id, otherUserId],
+          createdAt: conv.created_at,
+          updatedAt: conv.updated_at || conv.created_at,
+          otherUser: otherUser ? {
+            id: otherUser.id,
+            name: otherUser.name || 'Usuário',
+            avatar: otherUser.avatar_url || undefined
+          } : undefined
+        };
+      });
+
+      console.log('✨ Conversas formatadas:', formattedConversations.length);
+
+      // Definir conversas e mensagens do banco
+      setConversations(formattedConversations);
+      setMessages(messagesByConversation);
+      
+      console.log('📋 Conversas e mensagens carregadas:', {
+        totalConversations: formattedConversations.length,
+        totalMessages: Object.keys(messagesByConversation).length,
+        conversationIds: formattedConversations.map(c => c.id)
+      });
+
+    } catch (error) {
+      console.error('Erro ao carregar conversas:', error);
+    }
+  }, [user?.id]);
+
+  // Carregar conversas quando o usuário está disponível
+  useEffect(() => {
+    if (user?.id) {
+      loadConversations();
+    }
+  }, [user?.id, loadConversations]);
+
   return {
     candidates,
     currentCandidate,
@@ -502,6 +695,7 @@ export const [MatchContext, useMatch] = createContextHook<MatchContextType>(() =
     markAsRead,
     getNextCandidate,
     loadCandidates,
+    loadConversations,
     isLoading
   };
 });

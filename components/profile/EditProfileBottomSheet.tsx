@@ -14,7 +14,7 @@ import {
   UIManager,
   Alert,
 } from 'react-native';
-import { X, ChevronDown, ChevronUp, User, Heart, Target, Dumbbell, Star, MapPin } from 'lucide-react-native';
+import { X, ChevronDown, ChevronUp, User, Heart, Target, Dumbbell, Star, MapPin, GraduationCap, Briefcase, Globe } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +27,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 interface EditProfileBottomSheetProps {
   visible: boolean;
   onClose: () => void;
+  onSaveSuccess?: () => void;
 }
 
 const genderOptions = [
@@ -67,20 +68,49 @@ const SUGGESTED_INTERESTS = [
   'Camping', 'Vegetarianismo', 'R&B', 'Sustentabilidade'
 ];
 
-const SUGGESTED_GOALS = [
-  'Namoro sério',
-  'Relacionamento casual',
-  'Novas amizades',
-  'Networking',
-  'Crescimento pessoal',
-  'Aventuras',
-  'Encontros casuais',
-  'Conexões profundas',
+// Mapeamento de goals display (português) -> valor do banco (inglês)
+const GOAL_OPTIONS = [
+  { id: 'dating', label: 'Namoro casual' },
+  { id: 'serious', label: 'Relacionamento sério' },
+  { id: 'marriage', label: 'Casamento' },
+  { id: 'friendship', label: 'Amizade' },
 ];
 
-export default function EditProfileBottomSheet({ visible, onClose }: EditProfileBottomSheetProps) {
-  const { profile, user } = useAuthContext();
+// Mapa reverso para converter valor do banco para display
+const GOAL_LABELS: { [key: string]: string } = {
+  'dating': 'Namoro casual',
+  'serious': 'Relacionamento sério',
+  'marriage': 'Casamento',
+  'friendship': 'Amizade',
+};
+
+const LOVE_LANGUAGE_OPTIONS = [
+  { id: 'words_of_affirmation', label: 'Palavras de afirmação' },
+  { id: 'quality_time', label: 'Tempo de qualidade' },
+  { id: 'acts_of_service', label: 'Atos de serviço' },
+  { id: 'physical_touch', label: 'Toque físico' },
+  { id: 'receiving_gifts', label: 'Receber presentes' },
+];
+
+const SUGGESTED_VALUES = [
+  'Honestidade', 'Criatividade', 'Liberdade', 'Empatia', 'Conexão',
+  'Crescimento', 'Aventura', 'Imaginação', 'Natureza', 'Autenticidade',
+  'Família', 'Espiritualidade', 'Inovação', 'Sustentabilidade', 'Respeito'
+];
+
+const SUGGESTED_LANGUAGES = [
+  'Português', 'Inglês', 'Espanhol', 'Francês', 'Italiano',
+  'Alemão', 'Mandarim', 'Japonês', 'Coreano', 'Árabe'
+];
+
+export default function EditProfileBottomSheet({ visible, onClose, onSaveSuccess }: EditProfileBottomSheetProps) {
+  const { profile, user, updateProfile } = useAuthContext();
   const [saving, setSaving] = useState(false);
+
+  // Toast states
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
 
   // Animated values
   const backgroundOpacity = useRef(new Animated.Value(0)).current;
@@ -88,6 +118,12 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
 
   // Accordion states
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
 
   // Form states - Informações Básicas
   const [name, setName] = useState('');
@@ -111,6 +147,15 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
   const [alcohol, setAlcohol] = useState('');
   const [exercise, setExercise] = useState('');
 
+  // Form states - Valores e Linguagens do Amor
+  const [coreValues, setCoreValues] = useState<string[]>([]);
+  const [loveLanguages, setLoveLanguages] = useState<string[]>([]);
+
+  // Form states - Informações Profissionais
+  const [education, setEducation] = useState('');
+  const [profession, setProfession] = useState('');
+  const [languagesSpoken, setLanguagesSpoken] = useState<string[]>([]);
+
   // Load profile data
   useEffect(() => {
     if (profile) {
@@ -133,6 +178,13 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
         setAlcohol(lifestyle.alcohol || '');
         setExercise(lifestyle.exercise || '');
       }
+
+      // Load new fields
+      setCoreValues(profile.core_values || []);
+      setLoveLanguages(profile.love_languages || []);
+      setEducation(profile.education || '');
+      setProfession(profile.profession || '');
+      setLanguagesSpoken(profile.languages_spoken || []);
     }
   }, [profile, visible]);
 
@@ -157,13 +209,14 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
         setInterests(interestsData.map(i => i.interest));
       }
 
-      // Load goals
+      // Load goals - eles vêm do banco em inglês (dating, serious, etc)
       const { data: goalsData } = await supabase
         .from('user_goals')
         .select('goal')
         .eq('user_id', user.id);
 
       if (goalsData) {
+        // Manter os IDs (inglês) no estado, não os labels
         setGoals(goalsData.map(g => g.goal));
       }
     } catch (error) {
@@ -222,16 +275,47 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
     }
   };
 
-  const handleGoalToggle = (goal: string) => {
-    if (goals.includes(goal)) {
-      setGoals(prev => prev.filter(item => item !== goal));
-    } else if (goals.length < 5) {
-      setGoals(prev => [...prev, goal]);
+  const handleGoalToggle = (goalId: string) => {
+    if (goals.includes(goalId)) {
+      setGoals(prev => prev.filter(item => item !== goalId));
+    } else {
+      setGoals(prev => [...prev, goalId]);
+    }
+  };
+
+  const handleCoreValueToggle = (value: string) => {
+    if (coreValues.includes(value)) {
+      setCoreValues(prev => prev.filter(item => item !== value));
+    } else if (coreValues.length < 8) {
+      setCoreValues(prev => [...prev, value]);
+    }
+  };
+
+  const handleLoveLanguageToggle = (language: string) => {
+    if (loveLanguages.includes(language)) {
+      setLoveLanguages(prev => prev.filter(item => item !== language));
+    } else if (loveLanguages.length < 3) {
+      setLoveLanguages(prev => [...prev, language]);
+    }
+  };
+
+  const handleLanguageSpokenToggle = (language: string) => {
+    if (languagesSpoken.includes(language)) {
+      setLanguagesSpoken(prev => prev.filter(item => item !== language));
+    } else if (languagesSpoken.length < 5) {
+      setLanguagesSpoken(prev => [...prev, language]);
     }
   };
 
   const handleSave = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.error('❌ Usuário não autenticado');
+      showToast('Você precisa estar autenticado para editar o perfil.', 'error');
+      return;
+    }
+
+    console.log('🔄 Iniciando salvamento do perfil...');
+    console.log('👤 User ID:', user.id);
 
     setSaving(true);
 
@@ -243,29 +327,44 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
         isoDate = `${year}-${month}-${day}`;
       }
 
-      // Update user_profiles
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .update({
-          name,
-          age: parseInt(age) || null,
-          gender,
-          looking_for: lookingFor,
-          birth_date: isoDate || null,
-          birth_time: birthTime || null,
-          birth_place: birthPlace || null,
-          lifestyle: {
-            smoking,
-            alcohol,
-            exercise,
-          },
-        })
-        .eq('id', user.id);
+      const updateData = {
+        name,
+        age: parseInt(age) || null,
+        gender,
+        looking_for: lookingFor,
+        birth_date: isoDate || null,
+        birth_time: birthTime || null,
+        birth_place: birthPlace || null,
+        lifestyle: {
+          smoking,
+          alcohol,
+          exercise,
+        },
+        core_values: coreValues,
+        love_languages: loveLanguages,
+        education: education || null,
+        profession: profession || null,
+        languages_spoken: languagesSpoken,
+      };
 
-      if (profileError) throw profileError;
+      console.log('📝 Dados a serem salvos:', updateData);
+
+      // Update user_profiles usando o método do contexto
+      // Isso atualiza o banco E o estado local automaticamente
+      await updateProfile(updateData);
+
+      console.log('✅ Perfil atualizado com sucesso!');
 
       // Update interests - delete old ones and insert new ones
-      await supabase.from('user_interests').delete().eq('user_id', user.id);
+      console.log('🔄 Atualizando interesses...');
+      const { error: deleteInterestsError } = await supabase
+        .from('user_interests')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteInterestsError) {
+        console.error('❌ Erro ao deletar interesses:', deleteInterestsError);
+      }
 
       if (interests.length > 0) {
         const interestsData = interests.map(interest => ({
@@ -276,11 +375,23 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
           .from('user_interests')
           .insert(interestsData);
 
-        if (interestsError) throw interestsError;
+        if (interestsError) {
+          console.error('❌ Erro ao inserir interesses:', interestsError);
+          throw interestsError;
+        }
+        console.log('✅ Interesses atualizados!');
       }
 
       // Update goals - delete old ones and insert new ones
-      await supabase.from('user_goals').delete().eq('user_id', user.id);
+      console.log('🔄 Atualizando objetivos...');
+      const { error: deleteGoalsError } = await supabase
+        .from('user_goals')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteGoalsError) {
+        console.error('❌ Erro ao deletar objetivos:', deleteGoalsError);
+      }
 
       if (goals.length > 0) {
         const goalsData = goals.map(goal => ({
@@ -291,14 +402,30 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
           .from('user_goals')
           .insert(goalsData);
 
-        if (goalsError) throw goalsError;
+        if (goalsError) {
+          console.error('❌ Erro ao inserir objetivos:', goalsError);
+          throw goalsError;
+        }
+        console.log('✅ Objetivos atualizados!');
       }
 
-      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
-      handleClose();
+      console.log('🎉 Salvamento completo!');
+
+      // Chamar callback de sucesso se fornecido
+      if (onSaveSuccess) {
+        onSaveSuccess();
+      }
+
+      // Mostrar toast de sucesso
+      showToast('Perfil atualizado com sucesso!', 'success');
+
+      // Fechar o sheet após um pequeno delay para o usuário ver o toast
+      setTimeout(() => {
+        handleClose();
+      }, 500);
     } catch (error: any) {
-      console.error('Error updating profile:', error);
-      Alert.alert('Erro', error.message || 'Não foi possível atualizar o perfil.');
+      console.error('❌ Erro geral ao atualizar perfil:', error);
+      showToast(error.message || 'Não foi possível atualizar o perfil.', 'error');
     } finally {
       setSaving(false);
     }
@@ -338,6 +465,15 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
+        {/* Toast */}
+        <Toast
+          visible={toastVisible}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setToastVisible(false)}
+          duration={2500}
+        />
+
         {/* Background */}
         <Animated.View style={[styles.background, { opacity: backgroundOpacity }]}>
           <Pressable style={styles.fullPressable} onPress={handleClose} />
@@ -520,35 +656,161 @@ export default function EditProfileBottomSheet({ visible, onClose }: EditProfile
                   'goals',
                   <View>
                     <Text style={styles.label}>
-                      Selecionados ({goals.length}/5)
+                      Selecione seus objetivos
+                    </Text>
+                    <View style={styles.optionsRow}>
+                      {GOAL_OPTIONS.map((option) => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.optionButton,
+                            goals.includes(option.id) && styles.optionButtonActive,
+                          ]}
+                          onPress={() => handleGoalToggle(option.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.optionText,
+                              goals.includes(option.id) && styles.optionTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Valores */}
+                {renderAccordionSection(
+                  'Valores',
+                  <Heart size={20} color={colors.cosmic.purple} />,
+                  'values',
+                  <View>
+                    <Text style={styles.label}>
+                      Selecionados ({coreValues.length}/8)
                     </Text>
                     <View style={styles.tagsContainer}>
-                      {goals.length > 0 ? (
-                        goals.map((goal) => (
+                      {coreValues.length > 0 ? (
+                        coreValues.map((value) => (
                           <TouchableOpacity
-                            key={goal}
+                            key={value}
                             style={styles.selectedTag}
-                            onPress={() => handleGoalToggle(goal)}
+                            onPress={() => handleCoreValueToggle(value)}
                           >
-                            <Text style={styles.selectedTagText}>{goal}</Text>
+                            <Text style={styles.selectedTagText}>{value}</Text>
                             <X size={14} color="white" />
                           </TouchableOpacity>
                         ))
                       ) : (
-                        <Text style={styles.helperText}>Nenhum objetivo selecionado</Text>
+                        <Text style={styles.helperText}>Nenhum valor selecionado</Text>
                       )}
                     </View>
 
                     <Text style={[styles.label, { marginTop: 16 }]}>Sugestões</Text>
                     <View style={styles.tagsContainer}>
-                      {SUGGESTED_GOALS.filter(g => !goals.includes(g)).map((goal) => (
+                      {SUGGESTED_VALUES.filter(v => !coreValues.includes(v)).map((value) => (
                         <TouchableOpacity
-                          key={goal}
+                          key={value}
                           style={styles.suggestionTag}
-                          onPress={() => handleGoalToggle(goal)}
-                          disabled={goals.length >= 5}
+                          onPress={() => handleCoreValueToggle(value)}
+                          disabled={coreValues.length >= 8}
                         >
-                          <Text style={styles.suggestionTagText}>{goal}</Text>
+                          <Text style={styles.suggestionTagText}>{value}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Linguagens do Amor */}
+                {renderAccordionSection(
+                  'Linguagens do Amor',
+                  <Heart size={20} color={colors.cosmic.purple} />,
+                  'love_languages',
+                  <View>
+                    <Text style={styles.label}>
+                      Selecione até 3 linguagens do amor
+                    </Text>
+                    <View style={styles.optionsRow}>
+                      {LOVE_LANGUAGE_OPTIONS.map((option) => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.optionButton,
+                            loveLanguages.includes(option.id) && styles.optionButtonActive,
+                          ]}
+                          onPress={() => handleLoveLanguageToggle(option.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.optionText,
+                              loveLanguages.includes(option.id) && styles.optionTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Informações Profissionais */}
+                {renderAccordionSection(
+                  'Informações Profissionais',
+                  <Briefcase size={20} color={colors.cosmic.purple} />,
+                  'professional',
+                  <View>
+                    <Text style={styles.label}>Formação</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={education}
+                      onChangeText={setEducation}
+                      placeholder="Ex: Psicologia - USP"
+                      placeholderTextColor={colors.neutral[400]}
+                    />
+
+                    <Text style={styles.label}>Profissão</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={profession}
+                      onChangeText={setProfession}
+                      placeholder="Ex: Psicóloga Clínica"
+                      placeholderTextColor={colors.neutral[400]}
+                    />
+
+                    <Text style={styles.label}>
+                      Idiomas ({languagesSpoken.length}/5)
+                    </Text>
+                    <View style={styles.tagsContainer}>
+                      {languagesSpoken.length > 0 ? (
+                        languagesSpoken.map((language) => (
+                          <TouchableOpacity
+                            key={language}
+                            style={styles.selectedTag}
+                            onPress={() => handleLanguageSpokenToggle(language)}
+                          >
+                            <Text style={styles.selectedTagText}>{language}</Text>
+                            <X size={14} color="white" />
+                          </TouchableOpacity>
+                        ))
+                      ) : (
+                        <Text style={styles.helperText}>Nenhum idioma selecionado</Text>
+                      )}
+                    </View>
+
+                    <Text style={[styles.label, { marginTop: 16 }]}>Sugestões</Text>
+                    <View style={styles.tagsContainer}>
+                      {SUGGESTED_LANGUAGES.filter(l => !languagesSpoken.includes(l)).map((language) => (
+                        <TouchableOpacity
+                          key={language}
+                          style={styles.suggestionTag}
+                          onPress={() => handleLanguageSpokenToggle(language)}
+                          disabled={languagesSpoken.length >= 5}
+                        >
+                          <Text style={styles.suggestionTagText}>{language}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
