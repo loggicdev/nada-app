@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   PanResponder,
   Animated,
-  Alert,
   Platform
 } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
@@ -317,20 +316,9 @@ export default function MatchScreen() {
         console.log('📋 Resultado do likeUser:', result);
         
         if (result.isMatch) {
+          console.log('🎉 Match detectado! O MatchBottomSheet será mostrado via Realtime');
           showToast(`🎉 Match com ${candidateName}!`, 'success');
-
-          setTimeout(() => {
-            Alert.alert(
-              '💫 É um Match!',
-              `Você e ${candidateName} se curtiram! Que tal começar uma conversa?`,
-              [
-                { text: 'Ver depois', style: 'cancel' },
-                { text: 'Conversar', onPress: () => {
-                  // TODO: Navegar para conversa
-                }}
-              ]
-            );
-          }, 100);
+          // Nota: O MatchBottomSheet aparecerá automaticamente via useRealtimeMatches
         } else {
           console.log('💜 Like registrado com sucesso');
           showToast(`💜 Você curtiu ${candidateName}`, 'success');

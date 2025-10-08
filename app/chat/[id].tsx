@@ -8,103 +8,52 @@ import {
   TouchableOpacity,
   Image,
   Platform,
-  Alert,
   Keyboard,
-  Animated
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { 
-  ArrowLeft, 
-  Send, 
-  Image as ImageIcon, 
-  Smile,
-  User as UserIcon,
-  MoreVertical
-} from 'lucide-react-native';
+import { ArrowLeft, Send, Image as ImageIcon, Smile, User as UserIcon, MoreVertical } from 'lucide-react-native';
 import colors from '@/constants/colors';
-import { useMatch } from '@/contexts/MatchContext';
+import { useRealtimeMessages } from '@/hooks/useRealtimeMessages';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { mockUsers } from '@/mocks/users';
 import { supabase } from '@/lib/supabase';
-import { Message, MatchCandidate } from '@/types/user';
+import { Database } from '@/types/database';
 
-const REACTION_EMOJIS = ['❤️', '😍', '😂', '😮', '😢', '👍'];
+type Message = Database['public']['Tables']['messages']['Row'];
 
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
-  onReaction: (messageId: string, emoji: string) => void;
 }
 
-function MessageBubble({ message, isOwn, onReaction }: MessageBubbleProps) {
-  const [showReactions, setShowReactions] = useState<boolean>(false);
-
-  const handleLongPress = () => {
-    setShowReactions(true);
-  };
-
-  const handleReaction = (emoji: string) => {
-    onReaction(message.id, emoji);
-    setShowReactions(false);
-  };
-
-  const formatTime = (timestamp: string) => {
+function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+  const formatTime = (timestamp: string | null) => {
+    if (!timestamp) return '';
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return date.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
   return (
     <View style={[styles.messageContainer, isOwn ? styles.ownMessage : styles.otherMessage]}>
-      <TouchableOpacity
-        onLongPress={handleLongPress}
-        style={[
-          styles.messageBubble,
-          isOwn ? styles.ownBubble : styles.otherBubble
-        ]}
-      >
-        {message.type === 'image' ? (
+      <View style={[styles.messageBubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
+        {message.message_type === 'image' ? (
           <Image source={{ uri: message.content }} style={styles.messageImage} />
         ) : (
           <Text style={[styles.messageText, isOwn ? styles.ownText : styles.otherText]}>
             {message.content}
           </Text>
         )}
-        
-        {/* Reactions */}
-        {message.reactions && message.reactions.length > 0 && (
-          <View style={styles.reactionsContainer}>
-            {message.reactions.map((reaction) => (
-              <View key={reaction.id} style={styles.reactionBubble}>
-                <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </TouchableOpacity>
-      
-      <Text style={[styles.messageTime, isOwn ? styles.ownTime : styles.otherTime]}>
-        {formatTime(message.timestamp)}
-      </Text>
+      </View>
 
-      {/* Reaction Picker */}
-      {showReactions && (
-        <View style={[styles.reactionPicker, isOwn ? styles.ownReactionPicker : styles.otherReactionPicker]}>
-          {REACTION_EMOJIS.map((emoji) => (
-            <TouchableOpacity
-              key={emoji}
-              style={styles.reactionOption}
-              onPress={() => handleReaction(emoji)}
-            >
-              <Text style={styles.reactionOptionText}>{emoji}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      <Text style={[styles.messageTime, isOwn ? styles.ownTime : styles.otherTime]}>
+        {formatTime(message.sent_at)}
+      </Text>
     </View>
   );
 }
@@ -112,60 +61,73 @@ function MessageBubble({ message, isOwn, onReaction }: MessageBubbleProps) {
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { conversations, messages, sendMessage, addReaction, markAsRead } = useMatch();
   const { user: currentUser } = useAuthContext();
+
+  // Hook de mensagens em tempo real
+  const { messages, loading, sendMessage: sendRealtimeMessage, markAsRead } = useRealtimeMessages(id);
+
   const [inputText, setInputText] = useState<string>('');
   const [imageError, setImageError] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  const [otherUser, setOtherUser] = useState<MatchCandidate | null>(null);
+  const [otherUser, setOtherUser] = useState<any>(null);
   const [isLoadingUser, setIsLoadingUser] = useState<boolean>(true);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const conversation = conversations.find(c => c.id === id);
-  const conversationMessages = messages[id || ''] || [];
-  
-  // Debug logs
   useEffect(() => {
-    console.log('💬 Chat Debug:', {
-      conversationId: id,
-      conversationsCount: conversations.length,
-      conversationFound: !!conversation,
-      currentUserId: currentUser?.id,
-      participants: conversation?.participants,
-      allConversationIds: conversations.map(c => c.id),
-      conversationDetails: conversation
-    });
-  }, [id, conversations, conversation, currentUser?.id]);
-  
-  // Encontrar o outro usuário da conversa (que não é o atual)
-  const otherUserId = conversation?.participants.find(p => p !== currentUser?.id);
+    if (Platform.OS !== 'web') {
+      try {
+        SystemUI.setBackgroundColorAsync('#ffffff');
+      } catch (error) {
+        console.log('SystemUI not available:', error);
+      }
+    }
+  }, []);
 
-  // Carregar dados do outro usuário
+  // Carregar informações da conversa e do outro usuário
   useEffect(() => {
-    const loadOtherUser = async () => {
-      if (!otherUserId) {
+    const loadConversationData = async () => {
+      if (!id) {
         setIsLoadingUser(false);
         return;
       }
 
       try {
-        // Primeiro tentar nos mocks (para conversas de desenvolvimento)
-        const mockUser = mockUsers.find(u => u.id === otherUserId);
-        if (mockUser) {
-          setOtherUser(mockUser);
+        // Buscar conversa
+        const { data: conversation, error: convError } = await supabase
+          .from('conversations')
+          .select(`
+            *,
+            match:matches (
+              *
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        if (convError || !conversation) {
+          console.error('Erro ao carregar conversa:', convError);
           setIsLoadingUser(false);
           return;
         }
 
-        // Buscar no banco de dados
-        const { data: profile, error } = await supabase
+        const match = (conversation as any).match;
+        if (!match) {
+          setIsLoadingUser(false);
+          return;
+        }
+
+        // Identificar o outro usuário
+        const otherUserId =
+          match.user1_id === currentUser?.id ? match.user2_id : match.user1_id;
+
+        // Buscar perfil do outro usuário
+        const { data: profile, error: profileError } = await supabase
           .from('user_profiles')
           .select('*')
           .eq('id', otherUserId)
           .single();
 
-        if (error || !profile) {
-          console.error('Erro ao carregar perfil do usuário:', error);
+        if (profileError || !profile) {
+          console.error('Erro ao carregar perfil:', profileError);
           setIsLoadingUser(false);
           return;
         }
@@ -177,192 +139,73 @@ export default function ChatScreen() {
           .eq('user_id', otherUserId)
           .order('order_index', { ascending: true });
 
-        const userPhotos = photos?.map(p => p.photo_url) || [];
+        const userPhotos = photos?.map((p) => p.photo_url) || [];
         if (profile.avatar_url && !userPhotos.includes(profile.avatar_url)) {
           userPhotos.unshift(profile.avatar_url);
         }
 
-        const user: MatchCandidate = {
-          id: profile.id,
-          name: profile.name || 'Usuário',
-          age: profile.age || 0,
-          photos: userPhotos.length > 0 ? userPhotos : (profile.avatar_url ? [profile.avatar_url] : []),
-          bio: (profile as any).bio || 'Sem bio',
-          location: profile.birth_place || 'Localização não informada',
-          zodiacSign: profile.zodiac_sign || 'Não informado',
-          personalityType: (profile as any).personality_type || 'Não informado',
-          intentions: [],
-          interests: [],
-          lastActive: profile.updated_at || profile.created_at || new Date().toISOString(),
-          distance: 1.5
-        };
-
-        setOtherUser(user);
+        setOtherUser({
+          ...profile,
+          photos: userPhotos,
+        });
       } catch (error) {
-        console.error('Erro ao carregar usuário:', error);
+        console.error('Erro ao carregar dados da conversa:', error);
       } finally {
         setIsLoadingUser(false);
       }
     };
 
-    loadOtherUser();
-  }, [otherUserId]);
+    loadConversationData();
+  }, [id, currentUser?.id]);
 
+  // Marcar mensagens como lidas
   useEffect(() => {
-    // Configure SystemUI safely
-    if (Platform.OS !== 'web') {
-      try {
-        SystemUI.setBackgroundColorAsync('#ffffff');
-      } catch (error) {
-        console.log('SystemUI not available:', error);
-      }
-    }
-  }, []);
+    if (!messages.length || !currentUser?.id) return;
 
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => setKeyboardHeight(0)
+    const unreadMessages = messages.filter(
+      (msg) => msg.sender_id !== currentUser.id && !msg.read_at
     );
 
-    return () => {
-      keyboardDidShowListener?.remove();
-      keyboardDidHideListener?.remove();
-    };
-  }, []);
+    unreadMessages.forEach((msg) => {
+      markAsRead(msg.id);
+    });
+  }, [messages, currentUser?.id, markAsRead]);
 
+  // Scroll para o final quando novas mensagens chegarem
   useEffect(() => {
-    if (id) {
-      markAsRead(id);
-    }
-  }, [id, markAsRead]);
-
-  useEffect(() => {
-    // Scroll to bottom when new messages arrive or keyboard changes
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [conversationMessages.length, keyboardHeight]);
+  }, [messages.length]);
 
-  const handleSend = () => {
-    if (inputText.trim() && id) {
-      sendMessage(id, inputText.trim());
-      setInputText('');
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 150);
-    }
+  const handleSend = async () => {
+    if (!inputText.trim() || !id) return;
+
+    const content = inputText.trim();
+    setInputText('');
+
+    await sendRealtimeMessage(content, 'text');
+
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
   };
 
-  const handleImagePicker = () => {
-    Alert.alert(
-      'Enviar Imagem',
-      'Funcionalidade em desenvolvimento',
-      [{ text: 'OK' }]
-    );
-  };
-
-  const handleReaction = (messageId: string, emoji: string) => {
-    addReaction(messageId, emoji);
-  };
-
-  // Skeleton Loader Component
-  function ChatSkeletonLoader() {
-    const pulseAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-      const pulseAnimation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: false,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0,
-            duration: 1500,
-            useNativeDriver: false,
-          }),
-        ])
-      );
-      pulseAnimation.start();
-      return () => pulseAnimation.stop();
-    }, []);
-
-    const animatedOpacity = pulseAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.3, 0.7],
-    });
-
+  if (isLoadingUser || loading) {
     return (
-      <View style={styles.container}>
-        {/* Skeleton Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <Animated.View style={[styles.skeletonBox, { width: 32, height: 32, borderRadius: 16, opacity: animatedOpacity }]} />
-          
-          <View style={styles.headerInfo}>
-            <Animated.View style={[styles.skeletonBox, { width: 40, height: 40, borderRadius: 20, opacity: animatedOpacity }]} />
-            <View style={styles.headerText}>
-              <Animated.View style={[styles.skeletonBox, { width: 120, height: 18, marginBottom: 4, opacity: animatedOpacity }]} />
-              <Animated.View style={[styles.skeletonBox, { width: 80, height: 14, opacity: animatedOpacity }]} />
-            </View>
-          </View>
-          
-          <Animated.View style={[styles.skeletonBox, { width: 24, height: 24, borderRadius: 12, opacity: animatedOpacity }]} />
-        </View>
-
-        {/* Skeleton Messages */}
-        <ScrollView style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}>
-          {/* Mensagem do outro usuário */}
-          <View style={[styles.messageContainer, styles.otherMessage]}>
-            <Animated.View style={[styles.skeletonBox, { width: '70%', height: 40, borderRadius: 16, opacity: animatedOpacity }]} />
-          </View>
-          
-          {/* Mensagem própria */}
-          <View style={[styles.messageContainer, styles.ownMessage]}>
-            <Animated.View style={[styles.skeletonBox, { width: '60%', height: 35, borderRadius: 16, opacity: animatedOpacity }]} />
-          </View>
-
-          {/* Mensagem do outro usuário */}
-          <View style={[styles.messageContainer, styles.otherMessage]}>
-            <Animated.View style={[styles.skeletonBox, { width: '80%', height: 50, borderRadius: 16, opacity: animatedOpacity }]} />
-          </View>
-
-          {/* Mensagem própria */}
-          <View style={[styles.messageContainer, styles.ownMessage]}>
-            <Animated.View style={[styles.skeletonBox, { width: '45%', height: 30, borderRadius: 16, opacity: animatedOpacity }]} />
-          </View>
-
-          {/* Mensagem do outro usuário */}
-          <View style={[styles.messageContainer, styles.otherMessage]}>
-            <Animated.View style={[styles.skeletonBox, { width: '65%', height: 45, borderRadius: 16, opacity: animatedOpacity }]} />
-          </View>
-        </ScrollView>
-
-        {/* Skeleton Input Area */}
-        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom + 10, 20) }]}>
-          <Animated.View style={[styles.skeletonBox, { flex: 1, height: 44, borderRadius: 22, marginRight: 12, opacity: animatedOpacity }]} />
-          <Animated.View style={[styles.skeletonBox, { width: 44, height: 44, borderRadius: 22, opacity: animatedOpacity }]} />
-        </View>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.cosmic.purple} />
+        <Text style={{ marginTop: 16, color: colors.neutral[600] }}>Carregando conversa...</Text>
       </View>
     );
   }
 
-  if (isLoadingUser) {
-    return <ChatSkeletonLoader />;
-  }
-
-  if (!conversation || !otherUser) {
+  if (!otherUser) {
     return (
       <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text>Conversa não encontrada</Text>
-        <TouchableOpacity 
-          onPress={() => router.back()} 
+        <Text style={{ fontSize: 16, color: colors.neutral[700] }}>Conversa não encontrada</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
           style={{ marginTop: 16, padding: 12, backgroundColor: colors.cosmic.purple, borderRadius: 8 }}
         >
           <Text style={{ color: 'white' }}>Voltar</Text>
@@ -373,11 +216,11 @@ export default function ChatScreen() {
 
   const renderUserImage = () => {
     const hasPhoto = otherUser.photos && otherUser.photos.length > 0 && !imageError;
-    
+
     if (hasPhoto) {
       return (
-        <Image 
-          source={{ uri: otherUser.photos[0] }} 
+        <Image
+          source={{ uri: otherUser.photos[0] }}
           style={styles.headerAvatar}
           onError={() => setImageError(true)}
         />
@@ -385,31 +228,36 @@ export default function ChatScreen() {
     } else {
       return (
         <View style={[styles.headerAvatar, styles.avatarPlaceholder]}>
-          <UserIcon size={20} color={colors.neutral[400]} />
+          <Text style={styles.avatarPlaceholderText}>
+            {otherUser.name?.charAt(0).toUpperCase() || 'U'}
+          </Text>
         </View>
       );
     }
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={colors.neutral[800]} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerInfo}>
           {renderUserImage()}
           <View style={styles.headerText}>
-            <Text style={styles.headerName}>{otherUser.name}</Text>
+            <Text style={styles.headerName}>
+              {otherUser.name}, {otherUser.age}
+            </Text>
             <Text style={styles.headerStatus}>Online agora</Text>
           </View>
         </View>
-        
+
         <TouchableOpacity style={styles.moreButton}>
           <MoreVertical size={20} color={colors.neutral[600]} />
         </TouchableOpacity>
@@ -418,30 +266,17 @@ export default function ChatScreen() {
       {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
-        style={[
-          styles.messagesContainer,
-          { marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }
-        ]}
+        style={styles.messagesContainer}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-          autoscrollToTopThreshold: 10
-        }}
         onContentSizeChange={() => {
           setTimeout(() => {
             scrollViewRef.current?.scrollToEnd({ animated: true });
           }, 100);
         }}
-        onLayout={() => {
-          setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: false });
-          }, 50);
-        }}
       >
-        {conversationMessages.length === 0 ? (
+        {messages.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Vocês deram match! 🎉</Text>
             <Text style={styles.emptySubtitle}>
@@ -449,33 +284,23 @@ export default function ChatScreen() {
             </Text>
           </View>
         ) : (
-          conversationMessages.map((message) => (
+          messages.map((message) => (
             <MessageBubble
               key={message.id}
               message={message}
-              isOwn={message.senderId === 'current-user'}
-              onReaction={handleReaction}
+              isOwn={message.sender_id === currentUser?.id}
             />
           ))
         )}
       </ScrollView>
 
       {/* Input */}
-      <View style={[
-        styles.inputContainer,
-        { 
-          paddingBottom: insets.bottom + 12,
-          marginBottom: Platform.OS === 'android' ? keyboardHeight : 0
-        }
-      ]}>
+      <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 12 }]}>
         <View style={styles.inputRow}>
-          <TouchableOpacity 
-            style={styles.imageButton}
-            onPress={handleImagePicker}
-          >
-            <ImageIcon size={20} color={colors.cosmic.purple} />
+          <TouchableOpacity style={styles.imageButton} disabled>
+            <ImageIcon size={20} color={colors.neutral[300]} />
           </TouchableOpacity>
-          
+
           <TextInput
             style={styles.textInput}
             placeholder="Digite uma mensagem..."
@@ -489,15 +314,12 @@ export default function ChatScreen() {
             returnKeyType="send"
             enablesReturnKeyAutomatically
           />
-          
-          <TouchableOpacity 
-            style={styles.emojiButton}
-            onPress={() => {}}
-          >
-            <Smile size={20} color={colors.neutral[400]} />
+
+          <TouchableOpacity style={styles.emojiButton} disabled>
+            <Smile size={20} color={colors.neutral[300]} />
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.sendButton, inputText.trim() ? styles.sendButtonActive : {}]}
             onPress={handleSend}
             disabled={!inputText.trim()}
@@ -506,7 +328,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -515,8 +337,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.neutral[50],
   },
-
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,9 +362,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarPlaceholder: {
-    backgroundColor: colors.neutral[100],
+    backgroundColor: colors.cosmic.purple + '20',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.cosmic.purple,
   },
   headerText: {
     flex: 1,
@@ -570,7 +395,7 @@ const styles = StyleSheet.create({
   messagesContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 100,
     flexGrow: 1,
   },
   emptyState: {
@@ -650,60 +475,7 @@ const styles = StyleSheet.create({
     color: colors.neutral[500],
     textAlign: 'left',
   },
-  reactionsContainer: {
-    flexDirection: 'row',
-    position: 'absolute',
-    bottom: -8,
-    right: 8,
-    gap: 2,
-  },
-  reactionBubble: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  reactionEmoji: {
-    fontSize: 12,
-  },
-  reactionPicker: {
-    position: 'absolute',
-    top: -50,
-    backgroundColor: 'white',
-    borderRadius: 25,
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 10,
-  },
-  ownReactionPicker: {
-    right: 0,
-  },
-  otherReactionPicker: {
-    left: 0,
-  },
-  reactionOption: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  reactionOptionText: {
-    fontSize: 20,
-  },
   inputContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: colors.neutral[200],
@@ -753,9 +525,5 @@ const styles = StyleSheet.create({
   },
   sendButtonActive: {
     backgroundColor: colors.cosmic.purple,
-  },
-  skeletonBox: {
-    backgroundColor: '#2D3748',
-    borderRadius: 8,
   },
 });

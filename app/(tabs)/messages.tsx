@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, ActivityIndicator, RefreshControl } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MoreHorizontal, User as UserIcon, Sparkles } from 'lucide-react-native';
+import { Search, MoreHorizontal, User as UserIcon, Sparkles, MessageCircle } from 'lucide-react-native';
 import { router } from 'expo-router';
 import colors from '@/constants/colors';
-import { useMatch } from '@/contexts/MatchContext';
+import { useConversations } from '@/hooks/useRealtimeMessages';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -24,12 +24,16 @@ interface MatchUser {
 export default function MessagesScreen() {
   const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({});
   const insets = useSafeAreaInsets();
-  const { matches, conversations, messages, loadConversations } = useMatch();
   const { user } = useAuthContext();
+
+  // Hook de conversas em tempo real
+  const { conversations, loading, refresh } = useConversations();
 
   // Estados para novos matches
   const [newMatches, setNewMatches] = useState<MatchUser[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadNewMatchesRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -37,15 +41,53 @@ export default function MessagesScreen() {
     }
   }, []);
 
-  // Carregar conversas do MatchContext ao inicializar
+  // Carregar novos matches ao inicializar
   useEffect(() => {
     if (user?.id) {
       loadNewMatches();
-      loadConversations(); // Forçar carregamento das conversas
     }
   }, [user?.id]);
 
-  const loadNewMatches = async () => {
+  // Subscrever a mudanças em matches para atualizar a seção "Novos Matches"
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('🔔 [MessagesScreen] Iniciando subscrição de matches');
+
+    const matchesChannel = supabase
+      .channel('messages-screen-matches')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'matches',
+        },
+        (payload) => {
+          console.log('🎯 [Realtime] Match alterado:', payload.eventType, payload.new);
+          setTimeout(() => loadNewMatchesRef.current?.(), 100);
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 [MessagesScreen] Status matches:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [MessagesScreen] Subscrição de matches ativa');
+        }
+      });
+
+    return () => {
+      console.log('🔕 [MessagesScreen] Removendo subscrição de matches');
+      supabase.removeChannel(matchesChannel);
+    };
+  }, [user?.id]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadNewMatches(), refresh()]);
+    setRefreshing(false);
+  };
+
+  const loadNewMatches = useCallback(async () => {
     if (!user?.id) return;
 
     setLoadingMatches(true);
@@ -131,7 +173,10 @@ export default function MessagesScreen() {
     } finally {
       setLoadingMatches(false);
     }
-  };
+  }, [user?.id]);
+
+  // Guardar referência para usar no Realtime
+  loadNewMatchesRef.current = loadNewMatches;
 
   const handleImageError = (userId: string) => {
     setImageErrors(prev => ({ ...prev, [userId]: true }));
@@ -154,6 +199,23 @@ export default function MessagesScreen() {
           <UserIcon size={size * 0.5} color={colors.neutral[400]} />
         </View>
       );
+    }
+  };
+
+  const formatTimestamp = (timestamp: string | null) => {
+    if (!timestamp) return '';
+
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInHours = diffInMs / (1000 * 60 * 60);
+
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 48) {
+      return 'Ontem';
+    } else {
+      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     }
   };
 
@@ -214,20 +276,29 @@ export default function MessagesScreen() {
       </View>
 
       {/* Conversations Section */}
-      <View style={styles.section}>
+      <ScrollView
+        style={styles.conversationsSection}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Conversas</Text>
+          <View style={styles.sectionTitleRow}>
+            <MessageCircle size={20} color={colors.cosmic.purple} />
+            <Text style={styles.sectionTitle}>Conversas</Text>
+          </View>
         </View>
-        {loadingMatches ? (
+        {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.cosmic.purple} />
           </View>
         ) : conversations.length > 0 ? (
-          <ScrollView>
+          <>
             {conversations.map((conversation) => {
-              const lastMessage = messages[conversation.id]?.[messages[conversation.id].length - 1];
-              const otherUser = conversation.otherUser;
-              
+              const otherUser = conversation.match?.user_profile;
+              const lastMessage = conversation.last_message;
+              const unreadCount = conversation.unread_count || 0;
+
               return (
                 <TouchableOpacity
                   key={conversation.id}
@@ -235,25 +306,33 @@ export default function MessagesScreen() {
                   onPress={() => router.push(`/chat/${conversation.id}`)}
                 >
                   <View style={styles.avatarContainer}>
-                    {otherUser ? (
-                      renderUserImage(otherUser.id, [otherUser.avatar || ''], 56, styles.avatar)
+                    {otherUser?.avatar_url ? (
+                      <Image
+                        source={{ uri: otherUser.avatar_url }}
+                        style={styles.avatar}
+                        onError={() => handleImageError(otherUser.id)}
+                      />
                     ) : (
                       <View style={[styles.avatar, styles.placeholderAvatar]}>
-                        <UserIcon size={24} color={colors.neutral[400]} />
+                        <Text style={styles.avatarPlaceholderText}>
+                          {otherUser?.name?.charAt(0).toUpperCase() || 'U'}
+                        </Text>
                       </View>
                     )}
                   </View>
                   <View style={styles.conversationContent}>
                     <View style={styles.conversationHeader}>
                       <Text style={styles.userName}>
-                        {otherUser?.name || 'Usuário'}
+                        {otherUser?.name || 'Usuário'}, {otherUser?.age || ''}
                       </Text>
-                      <Text style={styles.timestamp}>
-                        {lastMessage ? new Date(lastMessage.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </Text>
+                      {lastMessage && (
+                        <Text style={styles.timestamp}>
+                          {formatTimestamp(lastMessage.sent_at)}
+                        </Text>
+                      )}
                     </View>
                     {lastMessage ? (
-                      <Text style={[styles.lastMessage, !lastMessage.read && styles.unreadMessage]} numberOfLines={1}>
+                      <Text style={[styles.lastMessage, unreadCount > 0 && styles.unreadMessage]} numberOfLines={1}>
                         {lastMessage.content}
                       </Text>
                     ) : (
@@ -263,22 +342,24 @@ export default function MessagesScreen() {
                     )}
                   </View>
                   <View style={styles.conversationActions}>
-                    {lastMessage && !lastMessage.read && <View style={styles.unreadDot} />}
-                    <TouchableOpacity style={styles.moreButton}>
-                      <MoreHorizontal size={16} color={colors.neutral[400]} />
-                    </TouchableOpacity>
+                    {unreadCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </>
         ) : (
           <View style={styles.emptyMatchesContainer}>
+            <MessageCircle size={32} color={colors.neutral[300]} />
             <Text style={styles.emptyMatchesText}>Nenhuma conversa ainda</Text>
             <Text style={styles.emptyMatchesSubtext}>Suas conversas aparecerão aqui quando você fizer match!</Text>
           </View>
         )}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -520,5 +601,27 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     padding: 4,
+  },
+  avatarPlaceholderText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.neutral[600],
+  },
+  unreadBadge: {
+    backgroundColor: colors.cosmic.purple,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  unreadBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  conversationsSection: {
+    flex: 1,
   },
 });
