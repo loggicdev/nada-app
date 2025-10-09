@@ -112,7 +112,7 @@ export default function JourneyScreen() {
               color: colors.cosmic.gold
             })}
             <Text style={styles.greeting}>
-              {greeting}, {profile?.name || 'Luna'}
+              {greeting}, {profile?.name?.split(' ')[0] || 'Luna'}
             </Text>
           </View>
           <Text style={styles.subtitle}>Sua jornada cósmica de hoje</Text>

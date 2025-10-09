@@ -19,14 +19,14 @@ export function useAuth() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Buscar perfil do usuário
+  // Buscar perfil do usuário (com logs reduzidos)
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
-    console.log('🔍 Buscando perfil para userId:', userId);
+    // console.log('🔍 Buscando perfil para userId:', userId);
 
     // Tentar 3 vezes antes de desistir
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        console.log(`🔍 Tentativa ${attempt}/3 de buscar perfil...`);
+        // console.log(`🔍 Tentativa ${attempt}/3 de buscar perfil...`);
 
         const { data, error } = await supabase
           .from('user_profiles')
@@ -35,7 +35,7 @@ export function useAuth() {
           .single();
 
         if (error) {
-          console.error(`❌ Erro na tentativa ${attempt}:`, error.message, error);
+          console.error(`❌ Erro na tentativa ${attempt}:`, error.message);
           if (attempt < 3) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue;
@@ -43,12 +43,7 @@ export function useAuth() {
           return null;
         }
 
-        console.log('✅ Perfil carregado na tentativa', attempt, ':', {
-          userId,
-          step: data.onboarding_current_step,
-          completed: data.onboarding_completed_at
-        });
-
+        // console.log('✅ Perfil carregado na tentativa', attempt);
         return data;
       } catch (error) {
         console.error(`❌ Exception na tentativa ${attempt}:`, error);
@@ -112,9 +107,9 @@ export function useAuth() {
   useEffect(() => {
     if (!user) return;
 
-    console.log('🔍 User mudou, buscando profile...');
+    // console.log('🔍 User mudou, buscando profile...');
     fetchProfile(user.id).then(profile => {
-      console.log('✅ Profile carregado:', profile ? 'existe' : 'null');
+      // console.log('✅ Profile carregado:', profile ? 'existe' : 'null');
       setProfile(profile);
       setLoading(false);
     });

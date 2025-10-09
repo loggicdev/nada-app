@@ -8,6 +8,7 @@ import colors from '@/constants/colors';
 import { useConversations } from '@/hooks/useRealtimeMessages';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { MessagesScreenSkeleton, NewMatchesSkeleton, ConversationsListSkeleton } from '@/components/SkeletonLoaders';
 
 
 
@@ -27,12 +28,20 @@ export default function MessagesScreen() {
   const { user } = useAuthContext();
 
   // Hook de conversas em tempo real
-  const { conversations, loading, refresh } = useConversations();
+  const { conversations, loading: loadingConversations, initialLoad: initialLoadConversations, refresh } = useConversations();
+
+  // Debug dos estados
+  console.log('🔍 [MessagesScreen] Estados:', {
+    conversationsLength: conversations.length,
+    loadingConversations,
+    initialLoadConversations,
+  });
 
   // Estados para novos matches
   const [newMatches, setNewMatches] = useState<MatchUser[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoadMatches, setInitialLoadMatches] = useState(true);
   const loadNewMatchesRef = useRef<(() => Promise<void>) | null>(null);
 
   // Estados de busca
@@ -184,6 +193,13 @@ export default function MessagesScreen() {
   // Guardar referência para usar no Realtime
   loadNewMatchesRef.current = loadNewMatches;
 
+  // Desativar carregamento inicial quando ambos terminarem
+  useEffect(() => {
+    if (!loadingConversations && !loadingMatches && initialLoadMatches) {
+      setInitialLoadMatches(false);
+    }
+  }, [loadingConversations, loadingMatches, initialLoadMatches]);
+
   const handleImageError = (userId: string) => {
     setImageErrors(prev => ({ ...prev, [userId]: true }));
   };
@@ -274,9 +290,10 @@ export default function MessagesScreen() {
             {
               width: searchWidth.interpolate({
                 inputRange: [0, 1],
-                outputRange: ['0%', '100%'],
+                outputRange: ['0%', '82%'],
               }),
               opacity: searchWidth,
+              alignSelf: 'flex-start',
             }
           ]}
         >
@@ -310,22 +327,21 @@ export default function MessagesScreen() {
       </View>
 
       {/* New Matches Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <Sparkles size={20} color={colors.cosmic.purple} fill={colors.cosmic.purple} />
-            <Text style={styles.sectionTitle}>Novos Matches</Text>
+      {loadingMatches && initialLoadMatches ? (
+        <NewMatchesSkeleton />
+      ) : (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Sparkles size={20} color={colors.cosmic.purple} fill={colors.cosmic.purple} />
+              <Text style={styles.sectionTitle}>Novos Matches</Text>
+            </View>
+            {newMatches.length > 0 && (
+              <Text style={styles.matchCount}>{newMatches.length}</Text>
+            )}
           </View>
-          {newMatches.length > 0 && (
-            <Text style={styles.matchCount}>{newMatches.length}</Text>
-          )}
-        </View>
 
-        {loadingMatches ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.cosmic.purple} />
-          </View>
-        ) : newMatches.length > 0 ? (
+          {newMatches.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.matchesScroll}>
             {newMatches.map((match) => {
               return (
@@ -352,8 +368,9 @@ export default function MessagesScreen() {
             <Text style={styles.emptyMatchesText}>Nenhum match ainda</Text>
             <Text style={styles.emptyMatchesSubtext}>Continue explorando perfis!</Text>
           </View>
-        )}
-      </View>
+          )}
+        </View>
+      )}
 
       {/* Conversations Section */}
       <ScrollView
@@ -362,17 +379,15 @@ export default function MessagesScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <MessageCircle size={20} color={colors.cosmic.purple} />
-            <Text style={styles.sectionTitle}>Conversas</Text>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <MessageCircle size={20} color={colors.cosmic.purple} />
+              <Text style={styles.sectionTitle}>Conversas</Text>
+            </View>
           </View>
-        </View>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.cosmic.purple} />
-          </View>
-        ) : filteredConversations.length > 0 ? (
+          {loadingConversations && initialLoadConversations ? (
+            <ConversationsListSkeleton />
+          ) : filteredConversations.length > 0 ? (
           <>
             {filteredConversations.map((conversation) => {
               const otherUser = conversation.match?.user_profile;
@@ -432,7 +447,7 @@ export default function MessagesScreen() {
               );
             })}
           </>
-        ) : searchQuery.trim() ? (
+          ) : searchQuery.trim() ? (
           <View style={styles.emptyMatchesContainer}>
             <Search size={32} color={colors.neutral[300]} />
             <Text style={styles.emptyMatchesText}>Nenhum resultado</Text>
@@ -440,13 +455,13 @@ export default function MessagesScreen() {
               Não encontramos "{searchQuery}"
             </Text>
           </View>
-        ) : (
-          <View style={styles.emptyMatchesContainer}>
-            <MessageCircle size={32} color={colors.neutral[300]} />
-            <Text style={styles.emptyMatchesText}>Nenhuma conversa ainda</Text>
-            <Text style={styles.emptyMatchesSubtext}>Suas conversas aparecerão aqui quando você fizer match!</Text>
-          </View>
-        )}
+          ) : (
+            <View style={styles.emptyMatchesContainer}>
+              <MessageCircle size={32} color={colors.neutral[300]} />
+              <Text style={styles.emptyMatchesText}>Nenhuma conversa ainda</Text>
+              <Text style={styles.emptyMatchesSubtext}>Suas conversas aparecerão aqui quando você fizer match!</Text>
+            </View>
+          )}
       </ScrollView>
     </View>
   );
@@ -463,7 +478,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    gap: 12,
+    gap: 8,
+    minHeight: 60,
   },
   title: {
     fontSize: 24,

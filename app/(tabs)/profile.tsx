@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Modal, 
 import * as SystemUI from 'expo-system-ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { Settings, Edit3, Star, Heart, MessageCircle, Crown, User, Camera, LogOut, X } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -295,7 +296,10 @@ export default function ProfileScreen() {
               <Text style={styles.premiumSubtitle}>Desbloqueie insights profundos e rituais exclusivos</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.premiumButton}>
+          <TouchableOpacity 
+            style={styles.premiumButton}
+            onPress={() => router.push('/premium')}
+          >
             <Text style={styles.premiumButtonText}>Assinar</Text>
           </TouchableOpacity>
         </LinearGradient>

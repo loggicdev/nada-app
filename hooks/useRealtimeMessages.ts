@@ -26,16 +26,23 @@ export function useRealtimeMessages(conversationId?: string) {
 
     const loadMessages = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('sent_at', { ascending: true });
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('sent_at', { ascending: true });
 
-      if (!error && data) {
-        setMessages(data);
+        if (!error && data) {
+          setMessages(data);
+        } else if (error) {
+          console.error('Erro ao carregar mensagens:', error);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar mensagens:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     loadMessages();
@@ -140,17 +147,43 @@ export function useConversations() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const loadConversationsRef = useRef<(() => Promise<void>) | null>(null);
+  const debounceTimeoutRef = useRef<number | null>(null);
+  const isLoadingRef = useRef(false); // Flag para evitar múltiplas chamadas simultâneas
+
+  console.log('🔍 [useConversations] Hook state:', { 
+    loading, 
+    initialLoad, 
+    conversationsLength: conversations.length,
+    userId: user?.id 
+  });
 
   // Carregar conversas
   const loadConversations = useCallback(async () => {
+    console.log('🔄 [loadConversations] Chamado com user:', user?.id, 'initialLoad:', initialLoad);
+    
     if (!user?.id) {
+      console.log('🚫 [loadConversations] Sem usuário, aguardando...');
       setLoading(false);
+      // NÃO resetar initialLoad aqui - aguardar o usuário
       return;
     }
 
+    // Evitar múltiplas chamadas simultâneas
+    if (isLoadingRef.current) {
+      console.log('⚠️ [loadConversations] Já carregando, ignorando nova chamada');
+      return;
+    }
+
+    isLoadingRef.current = true;
     console.log('🔄 [loadConversations] Carregando conversas para user:', user.id);
-    setLoading(true);
+    
+    // Só mostrar loading se for carregamento inicial
+    if (initialLoad) {
+      console.log('🔄 [useConversations] Iniciando carregamento inicial');
+      setLoading(true);
+    }
 
     try {
       // Buscar todas as conversas do usuário através dos matches
@@ -166,7 +199,10 @@ export function useConversations() {
 
       if (matchesError) {
         console.error('❌ [loadConversations] Erro ao carregar conversas:', matchesError);
-        setLoading(false);
+        if (initialLoad) {
+          setLoading(false);
+          setInitialLoad(false);
+        }
         return;
       }
 
@@ -228,17 +264,43 @@ export function useConversations() {
     } catch (error) {
       console.error('❌ [loadConversations] Erro ao carregar conversas:', error);
     } finally {
-      setLoading(false);
+      if (initialLoad) {
+        console.log('🔄 [useConversations] Finalizando carregamento inicial');
+        setLoading(false);
+        setInitialLoad(false);
+      }
+      isLoadingRef.current = false; // Liberar flag de loading
     }
   }, [user?.id]);
+
+  // Função debounced para recarregar conversas
+  const debouncedLoadConversations = useCallback(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    debounceTimeoutRef.current = setTimeout(() => {
+      loadConversationsRef.current?.();
+    }, 500) as any; // 500ms de debounce
+  }, []);
 
   // Guardar referência para usar no Realtime
   loadConversationsRef.current = loadConversations;
 
   // Carregar conversas inicial
   useEffect(() => {
+    console.log('🔄 [useConversations] useEffect loadConversations disparado, user:', user?.id);
     loadConversations();
   }, [loadConversations]);
+
+  // Resetar initialLoad quando usuário muda
+  useEffect(() => {
+    if (user?.id && !initialLoad) {
+      console.log('👤 [useConversations] Usuário mudou, resetando initialLoad');
+      setInitialLoad(true);
+      setLoading(true);
+    }
+  }, [user?.id]);
 
   // Subscrever a mudanças em conversas e mensagens
   useEffect(() => {
@@ -257,8 +319,8 @@ export function useConversations() {
           table: 'conversations',
         },
         (payload) => {
-          console.log('💬 [Realtime] Conversa alterada:', payload.eventType, payload.new);
-          setTimeout(() => loadConversationsRef.current?.(), 100);
+          // console.log('💬 [Realtime] Conversa alterada:', payload.eventType, payload.new);
+          debouncedLoadConversations();
         }
       )
       .on(
@@ -269,8 +331,8 @@ export function useConversations() {
           table: 'messages',
         },
         (payload) => {
-          console.log('📨 [Realtime] Mensagem alterada:', payload.eventType);
-          setTimeout(() => loadConversationsRef.current?.(), 100);
+          // console.log('📨 [Realtime] Mensagem alterada:', payload.eventType);
+          debouncedLoadConversations();
         }
       )
       .on(
@@ -285,7 +347,7 @@ export function useConversations() {
           // Só recarregar se for um match do usuário atual
           if (match?.user1_id === user.id || match?.user2_id === user.id) {
             console.log('🎯 [Realtime] Match alterado:', payload.eventType);
-            setTimeout(() => loadConversationsRef.current?.(), 100);
+            debouncedLoadConversations();
           }
         }
       )
@@ -307,6 +369,7 @@ export function useConversations() {
   return {
     conversations,
     loading,
+    initialLoad,
     refresh: loadConversations,
   };
 }
