@@ -61,14 +61,20 @@ export default function ProfileScreen() {
         console.error('Erro ao buscar matches:', matchesError);
       }
 
-      // Buscar número de conversas
-      const { data: conversationsData, error: conversationsError } = await supabase
-        .from('conversations')
-        .select('id, match_id!inner(user1_id, user2_id)', { count: 'exact' })
-        .or(`match_id.user1_id.eq.${user.id},match_id.user2_id.eq.${user.id}`);
+      // Buscar conversas do usuário usando os match_ids
+      let conversationsCount = 0;
+      if (matchesData && matchesData.length > 0) {
+        const matchIds = matchesData.map(m => m.id);
+        const { data: conversationsData, error: conversationsError } = await supabase
+          .from('conversations')
+          .select('id', { count: 'exact' })
+          .in('match_id', matchIds);
 
-      if (conversationsError) {
-        console.error('Erro ao buscar conversas:', conversationsError);
+        if (conversationsError) {
+          console.error('Erro ao buscar conversas:', conversationsError);
+        } else {
+          conversationsCount = conversationsData?.length || 0;
+        }
       }
 
       // Calcular compatibilidade média
@@ -82,7 +88,7 @@ export default function ProfileScreen() {
 
       setStats({
         matchesCount: matchesData?.length || 0,
-        conversationsCount: conversationsData?.length || 0,
+        conversationsCount,
         averageCompatibility,
       });
     } catch (error) {

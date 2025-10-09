@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, ActivityIndicator, RefreshControl, TextInput, Animated, Keyboard } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MoreHorizontal, User as UserIcon, Sparkles, MessageCircle } from 'lucide-react-native';
+import { Search, MoreHorizontal, User as UserIcon, Sparkles, MessageCircle, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import colors from '@/constants/colors';
 import { useConversations } from '@/hooks/useRealtimeMessages';
@@ -34,6 +34,12 @@ export default function MessagesScreen() {
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadNewMatchesRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Estados de busca
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchWidth = useRef(new Animated.Value(0)).current;
+  const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -219,13 +225,87 @@ export default function MessagesScreen() {
     }
   };
 
+  const openSearch = () => {
+    setSearchVisible(true);
+    Animated.timing(searchWidth, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      searchInputRef.current?.focus();
+    });
+  };
+
+  const closeSearch = () => {
+    Keyboard.dismiss();
+    Animated.timing(searchWidth, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      setSearchVisible(false);
+      setSearchQuery('');
+    });
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    searchInputRef.current?.focus();
+  };
+
+  // Filtrar conversas por query
+  const filteredConversations = conversations.filter(conversation => {
+    if (!searchQuery.trim()) return true;
+    const userName = conversation.match?.user_profile?.name?.toLowerCase() || '';
+    return userName.includes(searchQuery.toLowerCase());
+  });
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.title}>Mensagens</Text>
-        <TouchableOpacity style={styles.searchButton}>
-          <Search size={20} color={colors.cosmic.purple} />
+        {!searchVisible && (
+          <Text style={styles.title}>Mensagens</Text>
+        )}
+
+        <Animated.View
+          style={[
+            styles.searchContainer,
+            {
+              width: searchWidth.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              }),
+              opacity: searchWidth,
+            }
+          ]}
+        >
+          <Search size={18} color={colors.neutral[400]} style={styles.searchIcon} />
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            placeholder="Buscar conversas..."
+            placeholderTextColor={colors.neutral[400]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+              <X size={18} color={colors.neutral[400]} />
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        <TouchableOpacity
+          style={styles.searchButton}
+          onPress={searchVisible ? closeSearch : openSearch}
+        >
+          {searchVisible ? (
+            <X size={20} color={colors.cosmic.purple} />
+          ) : (
+            <Search size={20} color={colors.cosmic.purple} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -292,9 +372,9 @@ export default function MessagesScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.cosmic.purple} />
           </View>
-        ) : conversations.length > 0 ? (
+        ) : filteredConversations.length > 0 ? (
           <>
-            {conversations.map((conversation) => {
+            {filteredConversations.map((conversation) => {
               const otherUser = conversation.match?.user_profile;
               const lastMessage = conversation.last_message;
               const unreadCount = conversation.unread_count || 0;
@@ -352,6 +432,14 @@ export default function MessagesScreen() {
               );
             })}
           </>
+        ) : searchQuery.trim() ? (
+          <View style={styles.emptyMatchesContainer}>
+            <Search size={32} color={colors.neutral[300]} />
+            <Text style={styles.emptyMatchesText}>Nenhum resultado</Text>
+            <Text style={styles.emptyMatchesSubtext}>
+              Não encontramos "{searchQuery}"
+            </Text>
+          </View>
         ) : (
           <View style={styles.emptyMatchesContainer}>
             <MessageCircle size={32} color={colors.neutral[300]} />
@@ -375,11 +463,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    gap: 12,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.neutral[800],
+    flex: 1,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    height: 44,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.neutral[800],
+    paddingVertical: 0,
+  },
+  clearButton: {
+    padding: 4,
+    marginLeft: 4,
   },
   searchButton: {
     width: 44,
